@@ -25,10 +25,21 @@ local function hide_companion(e)
     e.activity_led_sprites = nil
 end
 
+-- Entity tint profiles (applied to layer[1] of each directional sprite)
+local PLH_TINT_STANDARD = {r = 0.9,  g = 0.8,  b = 0.6,  a = 1.0}  -- warm amber, distinct from vanilla blue
+local PLH_TINT_GATE     = {r = 0.35, g = 0.35, b = 0.35, a = 1.0}  -- dark grey for gate devices
+
+local function apply_tint(entity, tint)
+    for _, dir in pairs({"north", "east", "south", "west"}) do
+        entity.sprites[dir].layers[1].tint = tint
+    end
+end
+
 -- Type Detector entity (arithmetic combinator base + hidden output)
 local detector = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 detector.name = "plh-type-detector"
 detector.minable = {mining_time = 0.1, result = "plh-type-detector"}
+apply_tint(detector, PLH_TINT_STANDARD)
 
 local detector_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 detector_out.name = "plh-type-detector-output"
@@ -95,10 +106,15 @@ console.minable = {mining_time = 0.1, result = "plh-platform-request-driver"}
 console.maximum_wire_distance = 0
 console.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
 
+
 -- Quality Modulator: mode-selectable upstep or remove via custom GUI
 local modulator = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 modulator.name = "plh-quality-modulator"
 modulator.minable = {mining_time = 0.1, result = "plh-quality-modulator"}
+modulator.icon = "__platform-log-hacks__/graphics/entity/quality-modulator.png"
+modulator.icon_size = 64
+modulator.icon_mipmaps = 0
+apply_tint(modulator, PLH_TINT_STANDARD)
 
 local modulator_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 modulator_out.name = "plh-quality-modulator-output"
@@ -113,6 +129,7 @@ hide_companion(modulator_out)
 local storage_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 storage_reader.name = "plh-storage-reader"
 storage_reader.minable = {mining_time = 0.1, result = "plh-storage-reader"}
+apply_tint(storage_reader, PLH_TINT_STANDARD)
 
 local storage_reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 storage_reader_out.name = "plh-storage-reader-output"
@@ -128,6 +145,10 @@ hide_companion(storage_reader_out)
 local reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 reader.name = "plh-recipe-reader"
 reader.minable = {mining_time = 0.1, result = "plh-recipe-reader"}
+reader.icon = "__platform-log-hacks__/graphics/entity/recipe-reader.png"
+apply_tint(reader, PLH_TINT_STANDARD)
+reader.icon_size = 64
+reader.icon_mipmaps = 0
 
 local reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 reader_out.name = "plh-recipe-reader-output"
@@ -142,6 +163,7 @@ hide_companion(reader_out)
 local quality_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 quality_reader.name = "plh-quality-reader"
 quality_reader.minable = {mining_time = 0.1, result = "plh-quality-reader"}
+apply_tint(quality_reader, PLH_TINT_STANDARD)
 
 local quality_reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 quality_reader_out.name = "plh-quality-reader-output"
@@ -156,6 +178,7 @@ hide_companion(quality_reader_out)
 local type_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 type_gate.name = "plh-type-gate"
 type_gate.minable = {mining_time = 0.1, result = "plh-type-gate"}
+apply_tint(type_gate, PLH_TINT_GATE)
 
 local type_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 type_gate_out.name = "plh-type-gate-output"
@@ -170,6 +193,7 @@ hide_companion(type_gate_out)
 local subtype_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 subtype_gate.name = "plh-subtype-gate"
 subtype_gate.minable = {mining_time = 0.1, result = "plh-subtype-gate"}
+apply_tint(subtype_gate, PLH_TINT_GATE)
 
 local subtype_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 subtype_gate_out.name = "plh-subtype-gate-output"
@@ -245,8 +269,10 @@ data:extend({
     {
         type = "item",
         name = "plh-quality-modulator",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/entity/quality-modulator.png",
         icon_size = 64,
+        icon_mipmaps = 0,
+        icon_mipmaps = 1,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-quality-modulator]",
         stack_size = 10,
@@ -299,8 +325,9 @@ data:extend({
     {
         type = "item",
         name = "plh-recipe-reader",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/entity/recipe-reader.png",
         icon_size = 64,
+        icon_mipmaps = 0,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-recipe-reader]",
         stack_size = 10,
@@ -375,6 +402,7 @@ data:extend({
         icon_size = 64,
         icon_mipmaps = 1,
         flags = {},
+        hidden = true,
         subgroup = "circuit-network",
         order = "z-z-c",
         stack_size = 10,
@@ -394,6 +422,7 @@ data:extend({
             {type = "item", name = "plh-mini-signal-receiver", amount = 1},
         },
         enabled = false,
+        hidden = true,
         energy_required = 5,
     },
 })

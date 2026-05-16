@@ -1,7 +1,8 @@
-local tech = data.raw["technology"]["aai-signal-transmission"]
-if tech then
-    table.insert(tech.effects, {type = "unlock-recipe", recipe = "plh-mini-signal-receiver"})
-end
+-- mini-signal-receiver hidden pending AAI remote API support
+-- local tech = data.raw["technology"]["aai-signal-transmission"]
+-- if tech then
+--     table.insert(tech.effects, {type = "unlock-recipe", recipe = "plh-mini-signal-receiver"})
+-- end
 
 local circuit_tech = data.raw["technology"]["circuit-network"]
 if circuit_tech then

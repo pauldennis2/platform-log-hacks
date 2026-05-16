@@ -1,6 +1,6 @@
 local Gui = require("scripts.gui")
 
-local DRIVER_NAME = "plh-platform-request-driver"
+local DRIVER_NAME    = "plh-platform-request-driver"
 local SECTION_PREFIX = "plh-driver-"
 
 -- ── Shared helpers ────────────────────────────────────────────────────────────
@@ -658,7 +658,8 @@ local function get_best_producer_cache()
         local etype = entity.type
         if etype == "assembling-machine" or etype == "furnace" or etype == "rocket-silo" then
             if prototypes.item[entity.name] then
-                local speed = entity.crafting_speed or 1
+                local ok, speed = pcall(function() return entity.crafting_speed end)
+                if not ok then speed = 1 end
                 for cat in pairs(entity.crafting_categories or {}) do
                     local cur = category_best[cat]
                     if not cur or speed > cur.speed then
@@ -1411,6 +1412,12 @@ script.on_configuration_changed(function()
         for _, entity in ipairs(surface.find_entities_filtered({name = SUBTYPE_SPREADER_NAME})) do
             storage.subtype_spreaders[entity.unit_number] = entity
             update_subtype_spreader(entity)
+        end
+    end
+    -- mini-signal-receiver is hidden pending AAI remote API support; destroy any placed instances
+    for _, surface in pairs(game.surfaces) do
+        for _, entity in ipairs(surface.find_entities_filtered({name = "plh-mini-signal-receiver"})) do
+            entity.destroy()
         end
     end
 end)
