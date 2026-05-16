@@ -332,12 +332,37 @@ end
 
 script.on_event(defines.events.on_gui_opened, function(event)
     if not (event.entity and event.entity.name == MODULATOR_NAME) then return end
-    create_modulator_gui(game.players[event.player_index], event.entity)
+    local player = game.players[event.player_index]
+    player.opened = nil  -- dismiss the native arithmetic-combinator GUI
+    create_modulator_gui(player, event.entity)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
     if not (event.element and event.element.name == MODULATOR_FRAME) then return end
+    if event.element.valid then event.element.destroy() end
     storage.modulator_player_entity[game.players[event.player_index].index] = nil
+end)
+
+-- Close the GUI when the player walks out of reach (~10 tiles, same as vanilla entity GUIs).
+script.on_event(defines.events.on_player_changed_position, function(event)
+    local player      = game.players[event.player_index]
+    local unit_number = storage.modulator_player_entity[player.index]
+    if not unit_number then return end
+
+    local entity = storage.modulators[unit_number]
+    local frame  = player.gui.screen[MODULATOR_FRAME]
+
+    local function close()
+        if frame and frame.valid then frame.destroy() end
+        player.opened = nil
+        storage.modulator_player_entity[player.index] = nil
+    end
+
+    if not (entity and entity.valid) then close() return end
+
+    local dx = player.position.x - entity.position.x
+    local dy = player.position.y - entity.position.y
+    if dx * dx + dy * dy > 100 then close() end
 end)
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
