@@ -47,9 +47,12 @@ receiver.circuit_connector = {
 }
 receiver.circuit_wire_max_distance = 9
 
-local console = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+local console = util.table.deepcopy(data.raw["power-switch"]["power-switch"])
 console.name = "plh-platform-request-driver"
 console.minable = {mining_time = 0.1, result = "plh-platform-request-driver"}
+-- Zero out the copper wire distance so the entity can't actually switch power networks
+console.maximum_wire_distance = 0
+console.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
 
 data:extend({
     receiver,
@@ -57,7 +60,7 @@ data:extend({
     {
         type = "item",
         name = "plh-platform-request-driver",
-        icon = "__base__/graphics/icons/constant-combinator.png",
+        icon = "__base__/graphics/icons/power-switch.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-platform-request-driver]",
