@@ -27,6 +27,33 @@ local function remove_section(lp, unit_number)
     end
 end
 
+-- Adds or removes a PLH-managed interrupt on the platform schedule.
+-- old_planet: the interrupt station to remove (if any), new_planet: station to add (if any).
+local function set_platform_interrupt(platform, old_planet, new_planet)
+    local schedule = platform.schedule
+    if not schedule then return end
+    local records = schedule.records
+
+    if old_planet then
+        for i = #records, 1, -1 do
+            if records[i].interrupt and records[i].station == old_planet then
+                table.remove(records, i)
+                break
+            end
+        end
+    end
+
+    if new_planet then
+        table.insert(records, 1, {
+            station         = new_planet,
+            temporary       = true,
+            wait_conditions = {{type = "time", compare_type = "and", ticks = 3600}},
+        })
+    end
+
+    platform.schedule = schedule
+end
+
 local function update_console(entity)
     local platform = entity.surface.platform
     if not platform then return end
@@ -44,28 +71,29 @@ local function update_console(entity)
         defines.wire_connector_id.circuit_green
     )
 
-    if not signals then
+    local function clear(reason)
         section.filters = {}
-        return
+        local old = storage.plh_active_planet[entity.unit_number]
+        if old then
+            storage.plh_active_planet[entity.unit_number] = nil
+            set_platform_interrupt(platform, old, nil)
+        end
     end
+
+    if not signals then clear() return end
 
     local planet_name = nil
     local new_filters = {}
 
     for _, sig in pairs(signals) do
         if sig.signal.type == "space-location" then
-            if not planet_name then
-                planet_name = sig.signal.name
-            end
+            if not planet_name then planet_name = sig.signal.name end
         elseif not sig.signal.type and sig.count > 0 then
             table.insert(new_filters, sig)
         end
     end
 
-    if not planet_name or not next(new_filters) then
-        section.filters = {}
-        return
-    end
+    if not planet_name or not next(new_filters) then clear() return end
 
     local filters = {}
     for i, sig in ipairs(new_filters) do
@@ -80,6 +108,12 @@ local function update_console(entity)
         }
     end
     section.filters = filters
+
+    local old_planet = storage.plh_active_planet[entity.unit_number]
+    if old_planet ~= planet_name then
+        storage.plh_active_planet[entity.unit_number] = planet_name
+        set_platform_interrupt(platform, old_planet, planet_name)
+    end
 end
 
 local function on_console_built(event)
@@ -103,10 +137,18 @@ end
 local function on_console_removed(event)
     local entity = event.entity
     if not (entity and entity.name == DRIVER_NAME) then return end
+
+    local old_planet = storage.plh_active_planet[entity.unit_number]
+    storage.plh_active_planet[entity.unit_number] = nil
     storage.consoles[entity.unit_number] = nil
 
     local platform = entity.surface.platform
     if not platform then return end
+
+    if old_planet then
+        set_platform_interrupt(platform, old_planet, nil)
+    end
+
     local hub = platform.hub
     if not (hub and hub.valid) then return end
     local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
@@ -115,10 +157,12 @@ end
 
 script.on_init(function()
     storage.consoles = {}
+    storage.plh_active_planet = {}
 end)
 
 script.on_configuration_changed(function()
     storage.consoles = storage.consoles or {}
+    storage.plh_active_planet = storage.plh_active_planet or {}
 end)
 
 script.on_event(defines.events.on_built_entity, on_console_built)
