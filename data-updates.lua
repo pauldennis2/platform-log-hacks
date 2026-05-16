@@ -9,4 +9,5 @@ if circuit_tech then
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-upstepper"})
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-remover"})
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-type-detector"})
+    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-modulator"})
 end

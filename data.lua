@@ -113,6 +113,19 @@ remover_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 remover_out.collision_mask = {layers = {}}
 remover_out.selection_box = {{0, 0}, {0, 0}}
 
+-- Quality Modulator: mode-selectable upstep or remove via custom GUI
+local modulator = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
+modulator.name = "plh-quality-modulator"
+modulator.minable = {mining_time = 0.1, result = "plh-quality-modulator"}
+
+local modulator_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+modulator_out.name = "plh-quality-modulator-output"
+modulator_out.minable = nil
+modulator_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
+modulator_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
+modulator_out.collision_mask = {layers = {}}
+modulator_out.selection_box = {{0, 0}, {0, 0}}
+
 data:extend({
     receiver,
     console,
@@ -122,6 +135,8 @@ data:extend({
     upstepper_out,
     remover,
     remover_out,
+    modulator,
+    modulator_out,
     {
         type = "item",
         name = "plh-type-detector",
@@ -193,6 +208,24 @@ data:extend({
         name = "plh-quality-remover",
         ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
         results = {{type = "item", name = "plh-quality-remover", amount = 1}},
+        enabled = false,
+        energy_required = 1,
+    },
+    {
+        type = "item",
+        name = "plh-quality-modulator",
+        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon_size = 64,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-quality-modulator]",
+        stack_size = 10,
+        place_result = "plh-quality-modulator",
+    },
+    {
+        type = "recipe",
+        name = "plh-quality-modulator",
+        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
+        results = {{type = "item", name = "plh-quality-modulator", amount = 1}},
         enabled = false,
         energy_required = 1,
     },

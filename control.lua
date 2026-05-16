@@ -1,6 +1,8 @@
 local DRIVER_NAME = "plh-platform-request-driver"
 local SECTION_PREFIX = "plh-driver-"
 
+-- ── Shared helpers ────────────────────────────────────────────────────────────
+
 local function wire_companion(entity, output)
     local src_r = entity.get_wire_connector(defines.wire_connector_id.combinator_output_red,   true)
     local src_g = entity.get_wire_connector(defines.wire_connector_id.combinator_output_green, true)
@@ -18,7 +20,61 @@ local function get_circuit_section(behavior)
     return behavior.add_section("")
 end
 
--- ── Type Detector ────────────────────────────────────────────────────────────
+-- Prepares the hidden output combinator and returns its active circuit section.
+local function setup_output(output)
+    local behavior = output.get_or_create_control_behavior()
+    local section  = get_circuit_section(behavior)
+    section.active   = true
+    behavior.enabled = true
+    return section
+end
+
+-- Returns signals from the combinator's input network (nil if nothing connected).
+local function read_input(entity)
+    return entity.get_signals(
+        defines.wire_connector_id.combinator_input_red,
+        defines.wire_connector_id.combinator_input_green
+    )
+end
+
+-- ── Quality filter builders ───────────────────────────────────────────────────
+
+local QUALITY_NEXT = {
+    normal    = "uncommon",
+    uncommon  = "rare",
+    rare      = "epic",
+    epic      = "legendary",
+    legendary = "legendary",
+}
+
+local function build_upstep_filters(signals)
+    local filters = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local bumped = QUALITY_NEXT[sig.signal.quality or "normal"] or "legendary"
+            filters[#filters + 1] = {
+                value = {type = "item", name = sig.signal.name, quality = bumped},
+                min   = sig.count,
+            }
+        end
+    end
+    return filters
+end
+
+local function build_remove_filters(signals)
+    local filters = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            filters[#filters + 1] = {
+                value = {type = "item", name = sig.signal.name, quality = "normal"},
+                min   = sig.count,
+            }
+        end
+    end
+    return filters
+end
+
+-- ── Type Detector ─────────────────────────────────────────────────────────────
 
 local DETECTOR_NAME   = "plh-type-detector"
 local DETECTOR_OUTPUT = "plh-type-detector-output"
@@ -51,15 +107,8 @@ local function update_detector(entity)
     local output = storage.detector_outputs[entity.unit_number]
     if not (output and output.valid) then return end
 
-    local signals = entity.get_signals(
-        defines.wire_connector_id.combinator_input_red,
-        defines.wire_connector_id.combinator_input_green
-    )
-
-    local behavior = output.get_or_create_control_behavior()
-    local section  = get_circuit_section(behavior)
-    section.active  = true
-    behavior.enabled = true
+    local signals = read_input(entity)
+    local section = setup_output(output)
 
     if not signals then section.filters = {} return end
 
@@ -108,46 +157,20 @@ local function on_detector_removed(event)
     storage.detector_outputs[entity.unit_number] = nil
 end
 
--- ── Quality Up-stepper ───────────────────────────────────────────────────────
+-- ── Quality Up-stepper ────────────────────────────────────────────────────────
 
 local UPSTEPPER_NAME   = "plh-quality-upstepper"
 local UPSTEPPER_OUTPUT = "plh-quality-upstepper-output"
-
-local QUALITY_NEXT = {
-    normal    = "uncommon",
-    uncommon  = "rare",
-    rare      = "epic",
-    epic      = "legendary",
-    legendary = "legendary",
-}
 
 local function update_upstepper(entity)
     local output = storage.upstepper_outputs[entity.unit_number]
     if not (output and output.valid) then return end
 
-    local signals = entity.get_signals(
-        defines.wire_connector_id.combinator_input_red,
-        defines.wire_connector_id.combinator_input_green
-    )
-
-    local behavior = output.get_or_create_control_behavior()
-    local section  = get_circuit_section(behavior)
-    section.active  = true
-    behavior.enabled = true
+    local signals = read_input(entity)
+    local section = setup_output(output)
 
     if not signals then section.filters = {} return end
-
-    local filters = {}
-    for _, sig in ipairs(signals) do
-        if sig.signal.type == nil then
-            local bumped = QUALITY_NEXT[sig.signal.quality or "normal"] or "legendary"
-            filters[#filters + 1] = {
-                value = {type = "item", name = sig.signal.name, quality = bumped},
-                min   = sig.count,
-            }
-        end
-    end
-    section.filters = filters
+    section.filters = build_upstep_filters(signals)
 end
 
 local function on_upstepper_built(event)
@@ -177,7 +200,7 @@ local function on_upstepper_removed(event)
     storage.upstepper_outputs[entity.unit_number] = nil
 end
 
--- ── Quality Remover ──────────────────────────────────────────────────────────
+-- ── Quality Remover ───────────────────────────────────────────────────────────
 
 local REMOVER_NAME   = "plh-quality-remover"
 local REMOVER_OUTPUT = "plh-quality-remover-output"
@@ -186,28 +209,11 @@ local function update_remover(entity)
     local output = storage.remover_outputs[entity.unit_number]
     if not (output and output.valid) then return end
 
-    local signals = entity.get_signals(
-        defines.wire_connector_id.combinator_input_red,
-        defines.wire_connector_id.combinator_input_green
-    )
-
-    local behavior = output.get_or_create_control_behavior()
-    local section  = get_circuit_section(behavior)
-    section.active  = true
-    behavior.enabled = true
+    local signals = read_input(entity)
+    local section = setup_output(output)
 
     if not signals then section.filters = {} return end
-
-    local filters = {}
-    for _, sig in ipairs(signals) do
-        if sig.signal.type == nil then
-            filters[#filters + 1] = {
-                value = {type = "item", name = sig.signal.name, quality = "normal"},
-                min   = sig.count,
-            }
-        end
-    end
-    section.filters = filters
+    section.filters = build_remove_filters(signals)
 end
 
 local function on_remover_built(event)
@@ -237,7 +243,112 @@ local function on_remover_removed(event)
     storage.remover_outputs[entity.unit_number] = nil
 end
 
--- ── Platform Request Driver ──────────────────────────────────────────────────
+-- ── Quality Modulator ─────────────────────────────────────────────────────────
+
+local MODULATOR_NAME     = "plh-quality-modulator"
+local MODULATOR_OUTPUT   = "plh-quality-modulator-output"
+local MODULATOR_FRAME    = "plh-modulator-frame"
+local MODULATOR_DROPDOWN = "plh-modulator-mode-dropdown"
+
+local function update_modulator(entity)
+    local output = storage.modulator_outputs[entity.unit_number]
+    if not (output and output.valid) then return end
+
+    local signals = read_input(entity)
+    local section = setup_output(output)
+
+    if not signals then section.filters = {} return end
+
+    local mode = storage.modulator_mode[entity.unit_number] or "upstep"
+    section.filters = mode == "upstep"
+        and build_upstep_filters(signals)
+        or  build_remove_filters(signals)
+end
+
+local function create_modulator_gui(player, entity)
+    local existing = player.gui.screen[MODULATOR_FRAME]
+    if existing then existing.destroy() end
+
+    local frame = player.gui.screen.add{
+        type      = "frame",
+        name      = MODULATOR_FRAME,
+        caption   = {"entity-name.plh-quality-modulator"},
+        direction = "vertical",
+    }
+    frame.auto_center = true
+
+    local row = frame.add{type = "flow", direction = "horizontal"}
+    row.style.vertical_align = "center"
+    row.add{type = "label", caption = {"plh-gui.mode"}}
+
+    local mode = storage.modulator_mode[entity.unit_number] or "upstep"
+    row.add{
+        type           = "drop-down",
+        name           = MODULATOR_DROPDOWN,
+        items          = {{"plh-gui.upstep"}, {"plh-gui.remove"}},
+        selected_index = mode == "upstep" and 1 or 2,
+    }
+
+    player.opened = frame
+    storage.modulator_player_entity[player.index] = entity.unit_number
+end
+
+local function on_modulator_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == MODULATOR_NAME) then return end
+
+    local output = entity.surface.create_entity({
+        name        = MODULATOR_OUTPUT,
+        position    = entity.position,
+        force       = entity.force,
+        raise_built = false,
+    })
+    if not output then return end
+
+    wire_companion(entity, output)
+    storage.modulators[entity.unit_number]        = entity
+    storage.modulator_outputs[entity.unit_number] = output
+end
+
+local function on_modulator_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == MODULATOR_NAME) then return end
+
+    local output = storage.modulator_outputs[entity.unit_number]
+    if output and output.valid then output.destroy() end
+    storage.modulators[entity.unit_number]        = nil
+    storage.modulator_outputs[entity.unit_number] = nil
+    storage.modulator_mode[entity.unit_number]    = nil
+
+    -- Close the GUI for any player who has this modulator open
+    for _, player in pairs(game.players) do
+        if storage.modulator_player_entity[player.index] == entity.unit_number then
+            local frame = player.gui.screen[MODULATOR_FRAME]
+            if frame then frame.destroy() end
+            storage.modulator_player_entity[player.index] = nil
+        end
+    end
+end
+
+script.on_event(defines.events.on_gui_opened, function(event)
+    if not (event.entity and event.entity.name == MODULATOR_NAME) then return end
+    create_modulator_gui(game.players[event.player_index], event.entity)
+end)
+
+script.on_event(defines.events.on_gui_closed, function(event)
+    if not (event.element and event.element.name == MODULATOR_FRAME) then return end
+    storage.modulator_player_entity[game.players[event.player_index].index] = nil
+end)
+
+script.on_event(defines.events.on_gui_selection_state_changed, function(event)
+    if not (event.element and event.element.name == MODULATOR_DROPDOWN) then return end
+    local player     = game.players[event.player_index]
+    local unit_number = storage.modulator_player_entity[player.index]
+    if not unit_number then return end
+    storage.modulator_mode[unit_number] = event.element.selected_index == 1 and "upstep" or "remove"
+end)
+
+-- ── Platform Request Driver ───────────────────────────────────────────────────
 
 local function get_or_create_section(lp, unit_number)
     local group = SECTION_PREFIX .. unit_number
@@ -391,28 +502,36 @@ local function on_console_removed(event)
     if lp then remove_section(lp, entity.unit_number) end
 end
 
--- ── Lifecycle ────────────────────────────────────────────────────────────────
+-- ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 script.on_init(function()
-    storage.consoles           = {}
-    storage.plh_active_planet  = {}
-    storage.upsteppers         = {}
-    storage.upstepper_outputs  = {}
-    storage.removers           = {}
-    storage.remover_outputs    = {}
-    storage.detectors          = {}
-    storage.detector_outputs   = {}
+    storage.consoles                = {}
+    storage.plh_active_planet       = {}
+    storage.upsteppers              = {}
+    storage.upstepper_outputs       = {}
+    storage.removers                = {}
+    storage.remover_outputs         = {}
+    storage.detectors               = {}
+    storage.detector_outputs        = {}
+    storage.modulators              = {}
+    storage.modulator_outputs       = {}
+    storage.modulator_mode          = {}
+    storage.modulator_player_entity = {}
 end)
 
 script.on_configuration_changed(function()
-    storage.consoles           = storage.consoles           or {}
-    storage.plh_active_planet  = storage.plh_active_planet  or {}
-    storage.upsteppers         = storage.upsteppers         or {}
-    storage.upstepper_outputs  = storage.upstepper_outputs  or {}
-    storage.removers           = storage.removers           or {}
-    storage.remover_outputs    = storage.remover_outputs    or {}
-    storage.detectors          = storage.detectors          or {}
-    storage.detector_outputs   = storage.detector_outputs   or {}
+    storage.consoles                = storage.consoles                or {}
+    storage.plh_active_planet       = storage.plh_active_planet       or {}
+    storage.upsteppers              = storage.upsteppers              or {}
+    storage.upstepper_outputs       = storage.upstepper_outputs       or {}
+    storage.removers                = storage.removers                or {}
+    storage.remover_outputs         = storage.remover_outputs         or {}
+    storage.detectors               = storage.detectors               or {}
+    storage.detector_outputs        = storage.detector_outputs        or {}
+    storage.modulators              = storage.modulators              or {}
+    storage.modulator_outputs       = storage.modulator_outputs       or {}
+    storage.modulator_mode          = storage.modulator_mode          or {}
+    storage.modulator_player_entity = storage.modulator_player_entity or {}
 end)
 
 local function on_built(event)
@@ -420,6 +539,7 @@ local function on_built(event)
     on_detector_built(event)
     on_upstepper_built(event)
     on_remover_built(event)
+    on_modulator_built(event)
 end
 
 local function on_removed(event)
@@ -427,18 +547,19 @@ local function on_removed(event)
     on_detector_removed(event)
     on_upstepper_removed(event)
     on_remover_removed(event)
+    on_modulator_removed(event)
 end
 
-script.on_event(defines.events.on_built_entity,           on_built)
-script.on_event(defines.events.on_robot_built_entity,     on_built)
+script.on_event(defines.events.on_built_entity,                on_built)
+script.on_event(defines.events.on_robot_built_entity,          on_built)
 script.on_event(defines.events.on_space_platform_built_entity, on_built)
-script.on_event(defines.events.script_raised_built,       on_built)
-script.on_event(defines.events.script_raised_revive,      on_built)
+script.on_event(defines.events.script_raised_built,            on_built)
+script.on_event(defines.events.script_raised_revive,           on_built)
 
-script.on_event(defines.events.on_player_mined_entity,    on_removed)
-script.on_event(defines.events.on_robot_mined_entity,     on_removed)
-script.on_event(defines.events.on_entity_died,            on_removed)
-script.on_event(defines.events.script_raised_destroy,     on_removed)
+script.on_event(defines.events.on_player_mined_entity,         on_removed)
+script.on_event(defines.events.on_robot_mined_entity,          on_removed)
+script.on_event(defines.events.on_entity_died,                 on_removed)
+script.on_event(defines.events.script_raised_destroy,          on_removed)
 
 script.on_nth_tick(60, function()
     for id, entity in pairs(storage.consoles) do
@@ -452,27 +573,19 @@ end)
 
 script.on_nth_tick(2, function()
     for id, entity in pairs(storage.upsteppers) do
-        if entity and entity.valid then
-            update_upstepper(entity)
-        else
-            storage.upsteppers[id] = nil
-            storage.upstepper_outputs[id] = nil
-        end
+        if entity and entity.valid then update_upstepper(entity)
+        else storage.upsteppers[id] = nil; storage.upstepper_outputs[id] = nil end
     end
     for id, entity in pairs(storage.removers) do
-        if entity and entity.valid then
-            update_remover(entity)
-        else
-            storage.removers[id] = nil
-            storage.remover_outputs[id] = nil
-        end
+        if entity and entity.valid then update_remover(entity)
+        else storage.removers[id] = nil; storage.remover_outputs[id] = nil end
     end
     for id, entity in pairs(storage.detectors) do
-        if entity and entity.valid then
-            update_detector(entity)
-        else
-            storage.detectors[id] = nil
-            storage.detector_outputs[id] = nil
-        end
+        if entity and entity.valid then update_detector(entity)
+        else storage.detectors[id] = nil; storage.detector_outputs[id] = nil end
+    end
+    for id, entity in pairs(storage.modulators) do
+        if entity and entity.valid then update_modulator(entity)
+        else storage.modulators[id] = nil; storage.modulator_outputs[id] = nil end
     end
 end)

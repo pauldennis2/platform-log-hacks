@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.8
+- Add Quality Modulator: single entity with Upstep/Remove mode selectable via dropdown GUI
+
 ## 0.0.7
 - Add Quality Up-stepper: bumps all input item signals up one quality tier
 - Add Quality Remover: strips quality from all input item signals
