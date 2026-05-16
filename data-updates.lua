@@ -15,4 +15,5 @@ if circuit_tech then
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-storage-reader"})
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-recipe-reader"})
     table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-gate"})
+    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-type-gate"})
 end

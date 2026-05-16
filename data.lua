@@ -17,6 +17,14 @@ for _, def in ipairs({
     }})
 end
 
+-- Strips all visible sprites from a hidden companion constant combinator so it
+-- doesn't render on top of the main entity.
+local function hide_companion(e)
+    local empty = {filename = "__core__/graphics/empty.png", width = 1, height = 1, frame_count = 1}
+    e.sprites              = {north = empty, south = empty, east = empty, west = empty}
+    e.activity_led_sprites = nil
+end
+
 -- Type Detector entity (arithmetic combinator base + hidden output)
 local detector = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 detector.name = "plh-type-detector"
@@ -29,6 +37,7 @@ detector_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectabl
 detector_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 detector_out.collision_mask = {layers = {}}
 detector_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(detector_out)
 
 local receiver = util.table.deepcopy(data.raw["roboport"]["aai-signal-receiver"])
 
@@ -99,6 +108,7 @@ upstepper_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectab
 upstepper_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 upstepper_out.collision_mask = {layers = {}}
 upstepper_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(upstepper_out)
 
 -- Quality Remover: strips quality from all item signals
 local remover = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -112,6 +122,7 @@ remover_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable
 remover_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 remover_out.collision_mask = {layers = {}}
 remover_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(remover_out)
 
 -- Quality Modulator: mode-selectable upstep or remove via custom GUI
 local modulator = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -125,6 +136,7 @@ modulator_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectab
 modulator_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 modulator_out.collision_mask = {layers = {}}
 modulator_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(modulator_out)
 
 -- Storage Reader: reads % fullness of directly-wired storage entities
 local storage_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -138,6 +150,7 @@ storage_reader_out.flags = {"not-blueprintable", "not-deconstructable", "not-sel
 storage_reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 storage_reader_out.collision_mask = {layers = {}}
 storage_reader_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(storage_reader_out)
 
 -- Recipe Reader: outputs the building that produces each input item signal
 -- (Future: option 1 = output ingredients, option 2 = output what can be made)
@@ -152,6 +165,7 @@ reader_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-
 reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 reader_out.collision_mask = {layers = {}}
 reader_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(reader_out)
 
 -- Quality Reader: strips the item, outputs quality signals summed across all input items
 local quality_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -165,6 +179,7 @@ quality_reader_out.flags = {"not-blueprintable", "not-deconstructable", "not-sel
 quality_reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 quality_reader_out.collision_mask = {layers = {}}
 quality_reader_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(quality_reader_out)
 
 -- Quality Multiplexer: sums each item across all qualities, outputs that total at every quality tier
 local multiplexer = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -178,6 +193,7 @@ multiplexer_out.flags = {"not-blueprintable", "not-deconstructable", "not-select
 multiplexer_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 multiplexer_out.collision_mask = {layers = {}}
 multiplexer_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(multiplexer_out)
 
 -- Quality Gate: passes only item signals matching the selected quality tier
 local gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -191,6 +207,21 @@ gate_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in
 gate_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 gate_out.collision_mask = {layers = {}}
 gate_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(gate_out)
+
+-- Type Gate: passes only item signals of the selected type category
+local type_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
+type_gate.name = "plh-type-gate"
+type_gate.minable = {mining_time = 0.1, result = "plh-type-gate"}
+
+local type_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+type_gate_out.name = "plh-type-gate-output"
+type_gate_out.minable = nil
+type_gate_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
+type_gate_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
+type_gate_out.collision_mask = {layers = {}}
+type_gate_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(type_gate_out)
 
 data:extend({
     receiver,
@@ -213,6 +244,8 @@ data:extend({
     reader_out,
     gate,
     gate_out,
+    type_gate,
+    type_gate_out,
     {
         type = "item",
         name = "plh-type-detector",
@@ -392,6 +425,24 @@ data:extend({
         name = "plh-quality-gate",
         ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
         results = {{type = "item", name = "plh-quality-gate", amount = 1}},
+        enabled = false,
+        energy_required = 1,
+    },
+    {
+        type = "item",
+        name = "plh-type-gate",
+        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon_size = 64,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-type-gate]",
+        stack_size = 10,
+        place_result = "plh-type-gate",
+    },
+    {
+        type = "recipe",
+        name = "plh-type-gate",
+        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
+        results = {{type = "item", name = "plh-type-gate", amount = 1}},
         enabled = false,
         energy_required = 1,
     },

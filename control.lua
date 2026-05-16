@@ -81,6 +81,32 @@ local function build_upstep_filters(signals, steps)
     return filters
 end
 
+local function build_upstep_clamp_filters(signals, steps)
+    steps = steps or 1
+    local totals = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local idx     = QUALITY_INDEX[sig.signal.quality or "normal"] or 1
+            local new_idx = math.max(1, math.min(5, idx + steps))
+            local bumped  = QUALITY_ORDER[new_idx]
+            local key     = sig.signal.name .. "\0" .. bumped
+            if totals[key] then
+                totals[key].count = totals[key].count + sig.count
+            else
+                totals[key] = {name = sig.signal.name, quality = bumped, count = sig.count}
+            end
+        end
+    end
+    local filters = {}
+    for _, entry in pairs(totals) do
+        filters[#filters + 1] = {
+            value = {type = "item", name = entry.name, quality = entry.quality},
+            min   = entry.count,
+        }
+    end
+    return filters
+end
+
 local function build_remove_filters(signals)
     local filters = {}
     for _, sig in ipairs(signals) do
@@ -127,6 +153,11 @@ local CATEGORY_SIGNAL = {
     module       = "plh-sig-module",
     other        = "plh-sig-other",
 }
+
+local SIGNAL_CATEGORY = {}
+for cat, sig_name in pairs(CATEGORY_SIGNAL) do
+    SIGNAL_CATEGORY[sig_name] = cat
+end
 
 local item_cat_cache = {}
 local function categorize(name)
@@ -449,6 +480,8 @@ local function update_modulator(entity)
     if not signals then section.filters = {} return end
     if mode == "upstep" then
         section.filters = build_upstep_filters(signals, steps)
+    elseif mode == "upstep-clamp" then
+        section.filters = build_upstep_clamp_filters(signals, steps)
     elseif mode == "multiplex" then
         section.filters = build_multiplex_filters(signals)
     else
@@ -580,7 +613,7 @@ local function update_storage_reader(entity)
         section.filters = {}
     else
         section.filters = {{
-            value = {type = "virtual", name = "signal-A"},
+            value = {type = "virtual", name = "signal-A", quality = "normal"},
             min   = new_val,
         }}
     end
@@ -615,17 +648,18 @@ local function on_storage_reader_removed(event)
     storage.entity_keys[entity.unit_number]            = nil
 end
 
--- ── Recipe Reader (mode: producer) ───────────────────────────────────────────
--- Outputs item signals for the building that produces each input item.
--- Future option 1: output ingredient signals for each input item's recipe.
--- Future option 2: output item signals for what can be crafted using each input item.
+-- ── Recipe Reader (modes: producer / ingredients) ────────────────────────────
+-- producer:    outputs the building that produces each input item.
+-- ingredients: outputs the ingredient items needed to craft each input item,
+--              scaled by the input signal count.
 
 local READER_NAME   = "plh-recipe-reader"
 local READER_OUTPUT = "plh-recipe-reader-output"
 
--- Module-level cache: item_name → producer entity_name.
--- Rebuilt lazily from prototypes; reset on each game load automatically.
-local producer_cache = nil
+-- Module-level caches; rebuilt lazily from prototypes, reset on config change.
+local producer_cache       = nil
+local all_producers_cache  = nil
+local ingredient_cache     = nil
 
 local function get_producer_cache()
     if producer_cache then return producer_cache end
@@ -669,18 +703,142 @@ local function get_producer_cache()
     return producer_cache
 end
 
+local function get_all_producers_cache()
+    if all_producers_cache then return all_producers_cache end
+
+    -- category → set of all player-buildable machines that handle it
+    local category_machines = {}
+    for _, entity in pairs(prototypes.entity) do
+        local etype = entity.type
+        if etype == "assembling-machine" or etype == "furnace" or etype == "rocket-silo" then
+            if prototypes.item[entity.name] then
+                for cat in pairs(entity.crafting_categories or {}) do
+                    if not category_machines[cat] then category_machines[cat] = {} end
+                    category_machines[cat][entity.name] = true
+                end
+            end
+        end
+    end
+
+    -- item → set of all machines that can produce it (across all recipes)
+    all_producers_cache = {}
+    for _, recipe in pairs(prototypes.recipe) do
+        local cat = recipe.category or "crafting"
+        if cat ~= "recycling" then
+            local machines = category_machines[cat]
+            if machines then
+                for _, product in pairs(recipe.products or {}) do
+                    if product.type == "item" then
+                        if not all_producers_cache[product.name] then
+                            all_producers_cache[product.name] = {}
+                        end
+                        for machine_name in pairs(machines) do
+                            all_producers_cache[product.name][machine_name] = true
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return all_producers_cache
+end
+
+local function build_all_producers_filters(signals)
+    local cache         = get_all_producers_cache()
+    local machine_counts = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local machines = cache[sig.signal.name]
+            if machines then
+                for machine_name in pairs(machines) do
+                    machine_counts[machine_name] = (machine_counts[machine_name] or 0) + sig.count
+                end
+            end
+        end
+    end
+    local filters = {}
+    for machine_name, count in pairs(machine_counts) do
+        filters[#filters + 1] = {
+            value = {type = "item", name = machine_name, quality = "normal"},
+            min   = count,
+        }
+    end
+    return filters
+end
+
+local function get_ingredient_cache()
+    if ingredient_cache then return ingredient_cache end
+    ingredient_cache = {}
+    for _, recipe in pairs(prototypes.recipe) do
+        local cat = recipe.category or "crafting"
+        if cat ~= "recycling" then
+            for _, product in pairs(recipe.products or {}) do
+                if product.type == "item" and not ingredient_cache[product.name] then
+                    local ings = {}
+                    for _, ing in pairs(recipe.ingredients or {}) do
+                        if ing.type == "item" then
+                            ings[#ings + 1] = {name = ing.name, amount = ing.amount or 1}
+                        end
+                    end
+                    if #ings > 0 then
+                        ingredient_cache[product.name] = {
+                            ingredients = ings,
+                            yield       = product.amount or 1,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return ingredient_cache
+end
+
+local function build_ingredients_filters(signals)
+    local cache  = get_ingredient_cache()
+    local totals = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local data = cache[sig.signal.name]
+            if data then
+                local crafts = math.ceil(sig.count / data.yield)
+                for _, ing in ipairs(data.ingredients) do
+                    totals[ing.name] = (totals[ing.name] or 0) + crafts * ing.amount
+                end
+            end
+        end
+    end
+    local filters = {}
+    for name, count in pairs(totals) do
+        filters[#filters + 1] = {
+            value = {type = "item", name = name, quality = "normal"},
+            min   = count,
+        }
+    end
+    return filters
+end
+
 local function update_recipe_reader(entity)
     local id     = entity.unit_number
     local output = storage.reader_outputs[id]
     if not (output and output.valid) then return end
 
     local signals = read_input(entity)
-    local key     = signals_key(signals)
+    local mode    = storage.reader_mode[id] or "producer"
+    local key     = signals_key(signals, mode)
     if key == storage.entity_keys[id] then return end
     storage.entity_keys[id] = key
 
     local section = get_output_section(output)
     if not signals then section.filters = {} return end
+
+    if mode == "ingredients" then
+        section.filters = build_ingredients_filters(signals)
+        return
+    elseif mode == "all-producers" then
+        section.filters = build_all_producers_filters(signals)
+        return
+    end
 
     local cache = get_producer_cache()
     local machine_counts = {}
@@ -727,9 +885,16 @@ local function on_reader_removed(event)
 
     local output = storage.reader_outputs[entity.unit_number]
     if output and output.valid then output.destroy() end
-    storage.readers[entity.unit_number]        = nil
-    storage.reader_outputs[entity.unit_number] = nil
-    storage.entity_keys[entity.unit_number]    = nil
+    storage.readers[entity.unit_number]             = nil
+    storage.reader_outputs[entity.unit_number]      = nil
+    storage.reader_mode[entity.unit_number]         = nil
+    storage.entity_keys[entity.unit_number]         = nil
+
+    for _, player in pairs(game.players) do
+        if storage.reader_player_entity[player.index] == entity.unit_number then
+            Gui.close_reader(player)
+        end
+    end
 end
 
 -- ── Quality Gate ──────────────────────────────────────────────────────────────
@@ -818,6 +983,111 @@ local function on_gate_removed(event)
     for _, player in pairs(game.players) do
         if storage.gate_player_entity[player.index] == entity.unit_number then
             Gui.close_gate(player)
+        end
+    end
+end
+
+-- ── Type Gate ─────────────────────────────────────────────────────────────────
+
+local TYPE_GATE_NAME   = "plh-type-gate"
+local TYPE_GATE_OUTPUT = "plh-type-gate-output"
+
+local function update_type_gate(entity)
+    local id     = entity.unit_number
+    local output = storage.type_gate_outputs[id]
+    if not (output and output.valid) then return end
+
+    local signals  = read_input(entity)
+    local type_sel = storage.type_gate_type[id] or "intermediate"
+    local mode     = storage.type_gate_mode[id] or "allow"
+    local key      = signals_key(signals, mode .. type_sel)
+    if key == storage.entity_keys[id] then return end
+    storage.entity_keys[id] = key
+
+    local section = get_output_section(output)
+    if not signals then section.filters = {} return end
+
+    local filters = {}
+
+    if mode == "signal" then
+        local allowed_types = {}
+        for _, sig in ipairs(signals) do
+            if sig.signal.type == "virtual" and sig.count > 0 then
+                local cat = SIGNAL_CATEGORY[sig.signal.name]
+                if cat then allowed_types[cat] = true end
+            end
+        end
+        for _, sig in ipairs(signals) do
+            if sig.signal.type == nil then
+                if allowed_types[categorize(sig.signal.name)] then
+                    filters[#filters + 1] = {
+                        value = {type = "item", name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                        min   = sig.count,
+                    }
+                end
+            else
+                filters[#filters + 1] = {
+                    value = {type = sig.signal.type, name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                    min   = sig.count,
+                }
+            end
+        end
+    else
+        for _, sig in ipairs(signals) do
+            if sig.signal.type == nil then
+                local matches = categorize(sig.signal.name) == type_sel
+                if (mode == "allow") == matches then
+                    filters[#filters + 1] = {
+                        value = {type = "item", name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                        min   = sig.count,
+                    }
+                end
+            else
+                -- non-item signals (virtual, space-location, fluid, etc.) pass through unconditionally
+                filters[#filters + 1] = {
+                    value = {type = sig.signal.type, name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                    min   = sig.count,
+                }
+            end
+        end
+    end
+
+    section.filters = filters
+end
+
+local function on_type_gate_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == TYPE_GATE_NAME) then return end
+
+    local output = entity.surface.create_entity({
+        name        = TYPE_GATE_OUTPUT,
+        position    = entity.position,
+        force       = entity.force,
+        raise_built = false,
+    })
+    if not output then return end
+
+    wire_companion(entity, output)
+    init_output(output)
+    storage.type_gates[entity.unit_number]        = entity
+    storage.type_gate_outputs[entity.unit_number] = output
+end
+
+local function on_type_gate_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == TYPE_GATE_NAME) then return end
+
+    local output = storage.type_gate_outputs[entity.unit_number]
+    if output and output.valid then output.destroy() end
+    storage.type_gates[entity.unit_number]        = nil
+    storage.type_gate_outputs[entity.unit_number] = nil
+    storage.type_gate_type[entity.unit_number]    = nil
+    storage.type_gate_mode[entity.unit_number]    = nil
+    storage.entity_keys[entity.unit_number]       = nil
+
+    for _, player in pairs(game.players) do
+        if storage.type_gate_player_entity[player.index] == entity.unit_number then
+            Gui.close_type_gate(player)
         end
     end
 end
@@ -992,6 +1262,7 @@ local function rescan_surfaces()
         {STORAGE_READER_NAME, STORAGE_READER_OUTPUT, storage.storage_readers, storage.storage_reader_outputs},
         {READER_NAME,         READER_OUTPUT,         storage.readers,         storage.reader_outputs},
         {GATE_NAME,           GATE_OUTPUT,           storage.gates,           storage.gate_outputs},
+        {TYPE_GATE_NAME,      TYPE_GATE_OUTPUT,      storage.type_gates,      storage.type_gate_outputs},
     }
     for _, surface in pairs(game.surfaces) do
         for _, spec in ipairs(specs) do
@@ -1050,11 +1321,18 @@ script.on_init(function()
     storage.storage_reader_outputs  = {}
     storage.readers                 = {}
     storage.reader_outputs          = {}
+    storage.reader_mode             = {}
+    storage.reader_player_entity    = {}
     storage.gates                   = {}
     storage.gate_outputs            = {}
     storage.gate_quality            = {}
     storage.gate_mode               = {}
     storage.gate_player_entity      = {}
+    storage.type_gates              = {}
+    storage.type_gate_outputs       = {}
+    storage.type_gate_type          = {}
+    storage.type_gate_mode          = {}
+    storage.type_gate_player_entity = {}
     storage.entity_keys             = {}
 end)
 
@@ -1080,13 +1358,22 @@ script.on_configuration_changed(function()
     storage.storage_reader_outputs  = storage.storage_reader_outputs  or {}
     storage.readers                 = storage.readers                 or {}
     storage.reader_outputs          = storage.reader_outputs          or {}
+    storage.reader_mode             = storage.reader_mode             or {}
+    storage.reader_player_entity    = storage.reader_player_entity    or {}
     storage.gates                   = storage.gates                   or {}
     storage.gate_outputs            = storage.gate_outputs            or {}
     storage.gate_quality            = storage.gate_quality            or {}
     storage.gate_mode               = storage.gate_mode               or {}
     storage.gate_player_entity      = storage.gate_player_entity      or {}
+    storage.type_gates              = storage.type_gates              or {}
+    storage.type_gate_outputs       = storage.type_gate_outputs       or {}
+    storage.type_gate_type          = storage.type_gate_type          or {}
+    storage.type_gate_mode          = storage.type_gate_mode          or {}
+    storage.type_gate_player_entity = storage.type_gate_player_entity or {}
     storage.entity_keys             = {}   -- clear change-detection cache; rescan re-writes all filters
     producer_cache                  = nil  -- rebuild from updated prototypes
+    all_producers_cache             = nil
+    ingredient_cache                = nil
     rescan_surfaces()
 end)
 
@@ -1102,6 +1389,7 @@ local function on_built(event)
     on_storage_reader_built(event)
     on_reader_built(event)
     on_gate_built(event)
+    on_type_gate_built(event)
 end
 
 local function on_removed(event)
@@ -1115,6 +1403,7 @@ local function on_removed(event)
     on_storage_reader_removed(event)
     on_reader_removed(event)
     on_gate_removed(event)
+    on_type_gate_removed(event)
 end
 
 -- Engine-level name filters: Factorio skips the Lua callback entirely for
@@ -1123,7 +1412,7 @@ local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
     DRIVER_NAME, DETECTOR_NAME, UPSTEPPER_NAME, REMOVER_NAME,
     QUALITY_READER_NAME, MULTIPLEXER_NAME, MODULATOR_NAME,
-    STORAGE_READER_NAME, READER_NAME, GATE_NAME,
+    STORAGE_READER_NAME, READER_NAME, GATE_NAME, TYPE_GATE_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
 end
@@ -1188,5 +1477,9 @@ script.on_nth_tick(6, function()
     for id, entity in pairs(storage.gates) do
         if entity and entity.valid then update_gate(entity)
         else storage.gates[id] = nil; storage.gate_outputs[id] = nil end
+    end
+    for id, entity in pairs(storage.type_gates) do
+        if entity and entity.valid then update_type_gate(entity)
+        else storage.type_gates[id] = nil; storage.type_gate_outputs[id] = nil end
     end
 end)
