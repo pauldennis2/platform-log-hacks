@@ -1,0 +1,12 @@
+# Changelog
+
+## 0.0.7
+- Add Quality Up-stepper: bumps all input item signals up one quality tier
+- Add Quality Remover: strips quality from all input item signals
+- Add Signal Type Detector: categorises input items by group, outputs one virtual signal per category
+- Platform Request Driver now adds a temporary schedule stop to navigate to the source planet
+- Platform Request Driver is now restricted to space platforms (returns item to player if placed elsewhere)
+- Fix: use Factorio 2.0 wire connector API (`get_wire_connector` / `connect_to`)
+
+## 0.0.1
+- Initial release: Platform Request Driver, Mini Signal Receiver
