@@ -244,104 +244,6 @@ local function on_detector_removed(event)
     storage.entity_keys[entity.unit_number]      = nil
 end
 
--- ── Quality Up-stepper ────────────────────────────────────────────────────────
-
-local UPSTEPPER_NAME   = "plh-quality-upstepper"
-local UPSTEPPER_OUTPUT = "plh-quality-upstepper-output"
-
-local function update_upstepper(entity)
-    local id     = entity.unit_number
-    local output = storage.upstepper_outputs[id]
-    if not (output and output.valid) then return end
-
-    local signals = read_input(entity)
-    local key     = signals_key(signals)
-    if key == storage.entity_keys[id] then return end
-    storage.entity_keys[id] = key
-
-    local section = get_output_section(output)
-    if not signals then section.filters = {} return end
-    section.filters = build_upstep_filters(signals)
-end
-
-local function on_upstepper_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == UPSTEPPER_NAME) then return end
-
-    local output = entity.surface.create_entity({
-        name        = UPSTEPPER_OUTPUT,
-        position    = entity.position,
-        force       = entity.force,
-        raise_built = false,
-    })
-    if not output then return end
-
-    wire_companion(entity, output)
-    init_output(output)
-    storage.upsteppers[entity.unit_number]        = entity
-    storage.upstepper_outputs[entity.unit_number] = output
-end
-
-local function on_upstepper_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == UPSTEPPER_NAME) then return end
-
-    local output = storage.upstepper_outputs[entity.unit_number]
-    if output and output.valid then output.destroy() end
-    storage.upsteppers[entity.unit_number]        = nil
-    storage.upstepper_outputs[entity.unit_number] = nil
-    storage.entity_keys[entity.unit_number]       = nil
-end
-
--- ── Quality Remover ───────────────────────────────────────────────────────────
-
-local REMOVER_NAME   = "plh-quality-remover"
-local REMOVER_OUTPUT = "plh-quality-remover-output"
-
-local function update_remover(entity)
-    local id     = entity.unit_number
-    local output = storage.remover_outputs[id]
-    if not (output and output.valid) then return end
-
-    local signals = read_input(entity)
-    local key     = signals_key(signals)
-    if key == storage.entity_keys[id] then return end
-    storage.entity_keys[id] = key
-
-    local section = get_output_section(output)
-    if not signals then section.filters = {} return end
-    section.filters = build_remove_filters(signals)
-end
-
-local function on_remover_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == REMOVER_NAME) then return end
-
-    local output = entity.surface.create_entity({
-        name        = REMOVER_OUTPUT,
-        position    = entity.position,
-        force       = entity.force,
-        raise_built = false,
-    })
-    if not output then return end
-
-    wire_companion(entity, output)
-    init_output(output)
-    storage.removers[entity.unit_number]        = entity
-    storage.remover_outputs[entity.unit_number] = output
-end
-
-local function on_remover_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == REMOVER_NAME) then return end
-
-    local output = storage.remover_outputs[entity.unit_number]
-    if output and output.valid then output.destroy() end
-    storage.removers[entity.unit_number]        = nil
-    storage.remover_outputs[entity.unit_number] = nil
-    storage.entity_keys[entity.unit_number]     = nil
-end
-
 -- ── Quality Reader ────────────────────────────────────────────────────────────
 
 local QUALITY_READER_NAME   = "plh-quality-reader"
@@ -408,55 +310,6 @@ local function on_quality_reader_removed(event)
     storage.quality_readers[entity.unit_number]        = nil
     storage.quality_reader_outputs[entity.unit_number] = nil
     storage.entity_keys[entity.unit_number]            = nil
-end
-
--- ── Quality Multiplexer ───────────────────────────────────────────────────────
-
-local MULTIPLEXER_NAME   = "plh-quality-multiplexer"
-local MULTIPLEXER_OUTPUT = "plh-quality-multiplexer-output"
-
-local function update_multiplexer(entity)
-    local id     = entity.unit_number
-    local output = storage.multiplexer_outputs[id]
-    if not (output and output.valid) then return end
-
-    local signals = read_input(entity)
-    local key     = signals_key(signals)
-    if key == storage.entity_keys[id] then return end
-    storage.entity_keys[id] = key
-
-    local section = get_output_section(output)
-    if not signals then section.filters = {} return end
-    section.filters = build_multiplex_filters(signals)
-end
-
-local function on_multiplexer_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == MULTIPLEXER_NAME) then return end
-
-    local output = entity.surface.create_entity({
-        name        = MULTIPLEXER_OUTPUT,
-        position    = entity.position,
-        force       = entity.force,
-        raise_built = false,
-    })
-    if not output then return end
-
-    wire_companion(entity, output)
-    init_output(output)
-    storage.multiplexers[entity.unit_number]        = entity
-    storage.multiplexer_outputs[entity.unit_number] = output
-end
-
-local function on_multiplexer_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == MULTIPLEXER_NAME) then return end
-
-    local output = storage.multiplexer_outputs[entity.unit_number]
-    if output and output.valid then output.destroy() end
-    storage.multiplexers[entity.unit_number]        = nil
-    storage.multiplexer_outputs[entity.unit_number] = nil
-    storage.entity_keys[entity.unit_number]         = nil
 end
 
 -- ── Quality Modulator ─────────────────────────────────────────────────────────
@@ -897,96 +750,6 @@ local function on_reader_removed(event)
     end
 end
 
--- ── Quality Gate ──────────────────────────────────────────────────────────────
-
-local GATE_NAME   = "plh-quality-gate"
-local GATE_OUTPUT = "plh-quality-gate-output"
-
-local function update_gate(entity)
-    local id     = entity.unit_number
-    local output = storage.gate_outputs[id]
-    if not (output and output.valid) then return end
-
-    local signals = read_input(entity)
-    local quality = storage.gate_quality[id] or "normal"
-    local mode    = storage.gate_mode[id]    or "allow"
-    local key     = signals_key(signals, mode .. quality)
-    if key == storage.entity_keys[id] then return end
-    storage.entity_keys[id] = key
-
-    local section = get_output_section(output)
-    if not signals then section.filters = {} return end
-
-    local filters = {}
-
-    if mode == "signal" then
-        local allowed = {}
-        for _, sig in ipairs(signals) do
-            if sig.signal.type == "quality" and sig.count > 0 then
-                allowed[sig.signal.name] = true
-            end
-        end
-        for _, sig in ipairs(signals) do
-            if sig.signal.type == nil and allowed[sig.signal.quality or "normal"] then
-                filters[#filters + 1] = {
-                    value = {type = "item", name = sig.signal.name, quality = sig.signal.quality or "normal"},
-                    min   = sig.count,
-                }
-            end
-        end
-    else
-        for _, sig in ipairs(signals) do
-            if sig.signal.type == nil then
-                local matches = (sig.signal.quality or "normal") == quality
-                if (mode == "allow") == matches then
-                    filters[#filters + 1] = {
-                        value = {type = "item", name = sig.signal.name, quality = sig.signal.quality or "normal"},
-                        min   = sig.count,
-                    }
-                end
-            end
-        end
-    end
-    section.filters = filters
-end
-
-local function on_gate_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == GATE_NAME) then return end
-
-    local output = entity.surface.create_entity({
-        name        = GATE_OUTPUT,
-        position    = entity.position,
-        force       = entity.force,
-        raise_built = false,
-    })
-    if not output then return end
-
-    wire_companion(entity, output)
-    init_output(output)
-    storage.gates[entity.unit_number]        = entity
-    storage.gate_outputs[entity.unit_number] = output
-end
-
-local function on_gate_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == GATE_NAME) then return end
-
-    local output = storage.gate_outputs[entity.unit_number]
-    if output and output.valid then output.destroy() end
-    storage.gates[entity.unit_number]        = nil
-    storage.gate_outputs[entity.unit_number] = nil
-    storage.gate_quality[entity.unit_number] = nil
-    storage.gate_mode[entity.unit_number]    = nil
-    storage.entity_keys[entity.unit_number]  = nil
-
-    for _, player in pairs(game.players) do
-        if storage.gate_player_entity[player.index] == entity.unit_number then
-            Gui.close_gate(player)
-        end
-    end
-end
-
 -- ── Type Gate ─────────────────────────────────────────────────────────────────
 
 local TYPE_GATE_NAME   = "plh-type-gate"
@@ -1253,15 +1016,11 @@ end
 
 local function rescan_surfaces()
     local specs = {
-        {UPSTEPPER_NAME,      UPSTEPPER_OUTPUT,      storage.upsteppers,      storage.upstepper_outputs},
-        {REMOVER_NAME,        REMOVER_OUTPUT,        storage.removers,        storage.remover_outputs},
         {DETECTOR_NAME,       DETECTOR_OUTPUT,       storage.detectors,       storage.detector_outputs},
         {QUALITY_READER_NAME, QUALITY_READER_OUTPUT, storage.quality_readers, storage.quality_reader_outputs},
-        {MULTIPLEXER_NAME,    MULTIPLEXER_OUTPUT,    storage.multiplexers,    storage.multiplexer_outputs},
         {MODULATOR_NAME,      MODULATOR_OUTPUT,      storage.modulators,      storage.modulator_outputs},
         {STORAGE_READER_NAME, STORAGE_READER_OUTPUT, storage.storage_readers, storage.storage_reader_outputs},
         {READER_NAME,         READER_OUTPUT,         storage.readers,         storage.reader_outputs},
-        {GATE_NAME,           GATE_OUTPUT,           storage.gates,           storage.gate_outputs},
         {TYPE_GATE_NAME,      TYPE_GATE_OUTPUT,      storage.type_gates,      storage.type_gate_outputs},
     }
     for _, surface in pairs(game.surfaces) do
@@ -1302,16 +1061,10 @@ end
 script.on_init(function()
     storage.consoles                = {}
     storage.plh_active_planet       = {}
-    storage.upsteppers              = {}
-    storage.upstepper_outputs       = {}
-    storage.removers                = {}
-    storage.remover_outputs         = {}
     storage.detectors               = {}
     storage.detector_outputs        = {}
     storage.quality_readers         = {}
     storage.quality_reader_outputs  = {}
-    storage.multiplexers            = {}
-    storage.multiplexer_outputs     = {}
     storage.modulators              = {}
     storage.modulator_outputs       = {}
     storage.modulator_mode          = {}
@@ -1323,11 +1076,6 @@ script.on_init(function()
     storage.reader_outputs          = {}
     storage.reader_mode             = {}
     storage.reader_player_entity    = {}
-    storage.gates                   = {}
-    storage.gate_outputs            = {}
-    storage.gate_quality            = {}
-    storage.gate_mode               = {}
-    storage.gate_player_entity      = {}
     storage.type_gates              = {}
     storage.type_gate_outputs       = {}
     storage.type_gate_type          = {}
@@ -1339,16 +1087,10 @@ end)
 script.on_configuration_changed(function()
     storage.consoles                = storage.consoles                or {}
     storage.plh_active_planet       = storage.plh_active_planet       or {}
-    storage.upsteppers              = storage.upsteppers              or {}
-    storage.upstepper_outputs       = storage.upstepper_outputs       or {}
-    storage.removers                = storage.removers                or {}
-    storage.remover_outputs         = storage.remover_outputs         or {}
     storage.detectors               = storage.detectors               or {}
     storage.detector_outputs        = storage.detector_outputs        or {}
     storage.quality_readers         = storage.quality_readers         or {}
     storage.quality_reader_outputs  = storage.quality_reader_outputs  or {}
-    storage.multiplexers            = storage.multiplexers            or {}
-    storage.multiplexer_outputs     = storage.multiplexer_outputs     or {}
     storage.modulators              = storage.modulators              or {}
     storage.modulator_outputs       = storage.modulator_outputs       or {}
     storage.modulator_mode          = storage.modulator_mode          or {}
@@ -1360,11 +1102,6 @@ script.on_configuration_changed(function()
     storage.reader_outputs          = storage.reader_outputs          or {}
     storage.reader_mode             = storage.reader_mode             or {}
     storage.reader_player_entity    = storage.reader_player_entity    or {}
-    storage.gates                   = storage.gates                   or {}
-    storage.gate_outputs            = storage.gate_outputs            or {}
-    storage.gate_quality            = storage.gate_quality            or {}
-    storage.gate_mode               = storage.gate_mode               or {}
-    storage.gate_player_entity      = storage.gate_player_entity      or {}
     storage.type_gates              = storage.type_gates              or {}
     storage.type_gate_outputs       = storage.type_gate_outputs       or {}
     storage.type_gate_type          = storage.type_gate_type          or {}
@@ -1381,28 +1118,20 @@ end)
 local function on_built(event)
     on_console_built(event)
     on_detector_built(event)
-    on_upstepper_built(event)
-    on_remover_built(event)
     on_quality_reader_built(event)
-    on_multiplexer_built(event)
     on_modulator_built(event)
     on_storage_reader_built(event)
     on_reader_built(event)
-    on_gate_built(event)
     on_type_gate_built(event)
 end
 
 local function on_removed(event)
     on_console_removed(event)
     on_detector_removed(event)
-    on_upstepper_removed(event)
-    on_remover_removed(event)
     on_quality_reader_removed(event)
-    on_multiplexer_removed(event)
     on_modulator_removed(event)
     on_storage_reader_removed(event)
     on_reader_removed(event)
-    on_gate_removed(event)
     on_type_gate_removed(event)
 end
 
@@ -1410,9 +1139,8 @@ end
 -- entities not in this list, eliminating the biggest UPS leak in busy games.
 local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
-    DRIVER_NAME, DETECTOR_NAME, UPSTEPPER_NAME, REMOVER_NAME,
-    QUALITY_READER_NAME, MULTIPLEXER_NAME, MODULATOR_NAME,
-    STORAGE_READER_NAME, READER_NAME, GATE_NAME, TYPE_GATE_NAME,
+    DRIVER_NAME, DETECTOR_NAME, QUALITY_READER_NAME, MODULATOR_NAME,
+    STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
 end
@@ -1442,14 +1170,6 @@ end)
 script.on_nth_tick(6, function()
     -- Guard: entity_keys may be absent in saves from before this table was added.
     if not storage.entity_keys then storage.entity_keys = {} end
-    for id, entity in pairs(storage.upsteppers) do
-        if entity and entity.valid then update_upstepper(entity)
-        else storage.upsteppers[id] = nil; storage.upstepper_outputs[id] = nil end
-    end
-    for id, entity in pairs(storage.removers) do
-        if entity and entity.valid then update_remover(entity)
-        else storage.removers[id] = nil; storage.remover_outputs[id] = nil end
-    end
     for id, entity in pairs(storage.detectors) do
         if entity and entity.valid then update_detector(entity)
         else storage.detectors[id] = nil; storage.detector_outputs[id] = nil end
@@ -1457,10 +1177,6 @@ script.on_nth_tick(6, function()
     for id, entity in pairs(storage.quality_readers) do
         if entity and entity.valid then update_quality_reader(entity)
         else storage.quality_readers[id] = nil; storage.quality_reader_outputs[id] = nil end
-    end
-    for id, entity in pairs(storage.multiplexers) do
-        if entity and entity.valid then update_multiplexer(entity)
-        else storage.multiplexers[id] = nil; storage.multiplexer_outputs[id] = nil end
     end
     for id, entity in pairs(storage.modulators) do
         if entity and entity.valid then update_modulator(entity)
@@ -1473,10 +1189,6 @@ script.on_nth_tick(6, function()
     for id, entity in pairs(storage.readers) do
         if entity and entity.valid then update_recipe_reader(entity)
         else storage.readers[id] = nil; storage.reader_outputs[id] = nil end
-    end
-    for id, entity in pairs(storage.gates) do
-        if entity and entity.valid then update_gate(entity)
-        else storage.gates[id] = nil; storage.gate_outputs[id] = nil end
     end
     for id, entity in pairs(storage.type_gates) do
         if entity and entity.valid then update_type_gate(entity)

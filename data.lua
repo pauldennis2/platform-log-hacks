@@ -95,35 +95,6 @@ console.minable = {mining_time = 0.1, result = "plh-platform-request-driver"}
 console.maximum_wire_distance = 0
 console.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
 
--- Quality Upstepper: arithmetic combinator shell with separate input/output ports
-local upstepper = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
-upstepper.name = "plh-quality-upstepper"
-upstepper.minable = {mining_time = 0.1, result = "plh-quality-upstepper"}
-
--- Hidden constant combinator wired to the output port by script — provides the actual output signals
-local upstepper_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-upstepper_out.name = "plh-quality-upstepper-output"
-upstepper_out.minable = nil
-upstepper_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
-upstepper_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
-upstepper_out.collision_mask = {layers = {}}
-upstepper_out.selection_box = {{0, 0}, {0, 0}}
-hide_companion(upstepper_out)
-
--- Quality Remover: strips quality from all item signals
-local remover = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
-remover.name = "plh-quality-remover"
-remover.minable = {mining_time = 0.1, result = "plh-quality-remover"}
-
-local remover_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-remover_out.name = "plh-quality-remover-output"
-remover_out.minable = nil
-remover_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
-remover_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
-remover_out.collision_mask = {layers = {}}
-remover_out.selection_box = {{0, 0}, {0, 0}}
-hide_companion(remover_out)
-
 -- Quality Modulator: mode-selectable upstep or remove via custom GUI
 local modulator = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 modulator.name = "plh-quality-modulator"
@@ -181,34 +152,6 @@ quality_reader_out.collision_mask = {layers = {}}
 quality_reader_out.selection_box = {{0, 0}, {0, 0}}
 hide_companion(quality_reader_out)
 
--- Quality Multiplexer: sums each item across all qualities, outputs that total at every quality tier
-local multiplexer = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
-multiplexer.name = "plh-quality-multiplexer"
-multiplexer.minable = {mining_time = 0.1, result = "plh-quality-multiplexer"}
-
-local multiplexer_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-multiplexer_out.name = "plh-quality-multiplexer-output"
-multiplexer_out.minable = nil
-multiplexer_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
-multiplexer_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
-multiplexer_out.collision_mask = {layers = {}}
-multiplexer_out.selection_box = {{0, 0}, {0, 0}}
-hide_companion(multiplexer_out)
-
--- Quality Gate: passes only item signals matching the selected quality tier
-local gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
-gate.name = "plh-quality-gate"
-gate.minable = {mining_time = 0.1, result = "plh-quality-gate"}
-
-local gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-gate_out.name = "plh-quality-gate-output"
-gate_out.minable = nil
-gate_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
-gate_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
-gate_out.collision_mask = {layers = {}}
-gate_out.selection_box = {{0, 0}, {0, 0}}
-hide_companion(gate_out)
-
 -- Type Gate: passes only item signals of the selected type category
 local type_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 type_gate.name = "plh-type-gate"
@@ -228,22 +171,14 @@ data:extend({
     console,
     detector,
     detector_out,
-    upstepper,
-    upstepper_out,
-    remover,
-    remover_out,
     modulator,
     modulator_out,
     quality_reader,
     quality_reader_out,
-    multiplexer,
-    multiplexer_out,
     storage_reader,
     storage_reader_out,
     reader,
     reader_out,
-    gate,
-    gate_out,
     type_gate,
     type_gate_out,
     {
@@ -266,24 +201,6 @@ data:extend({
     },
     {
         type = "item",
-        name = "plh-quality-upstepper",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
-        icon_size = 64,
-        subgroup = "circuit-network",
-        order = "c[combinators]-z[plh-quality-upstepper]",
-        stack_size = 10,
-        place_result = "plh-quality-upstepper",
-    },
-    {
-        type = "recipe",
-        name = "plh-quality-upstepper",
-        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
-        results = {{type = "item", name = "plh-quality-upstepper", amount = 1}},
-        enabled = false,
-        energy_required = 1,
-    },
-    {
-        type = "item",
         name = "plh-platform-request-driver",
         icon = "__base__/graphics/icons/power-switch.png",
         icon_size = 64,
@@ -299,24 +216,6 @@ data:extend({
             {type = "item", name = "electronic-circuit", amount = 1},
         },
         results = {{type = "item", name = "plh-platform-request-driver", amount = 1}},
-        enabled = false,
-        energy_required = 1,
-    },
-    {
-        type = "item",
-        name = "plh-quality-remover",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
-        icon_size = 64,
-        subgroup = "circuit-network",
-        order = "c[combinators]-z[plh-quality-remover]",
-        stack_size = 10,
-        place_result = "plh-quality-remover",
-    },
-    {
-        type = "recipe",
-        name = "plh-quality-remover",
-        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
-        results = {{type = "item", name = "plh-quality-remover", amount = 1}},
         enabled = false,
         energy_required = 1,
     },
@@ -358,24 +257,6 @@ data:extend({
     },
     {
         type = "item",
-        name = "plh-quality-multiplexer",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
-        icon_size = 64,
-        subgroup = "circuit-network",
-        order = "c[combinators]-z[plh-quality-multiplexer]",
-        stack_size = 10,
-        place_result = "plh-quality-multiplexer",
-    },
-    {
-        type = "recipe",
-        name = "plh-quality-multiplexer",
-        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
-        results = {{type = "item", name = "plh-quality-multiplexer", amount = 1}},
-        enabled = false,
-        energy_required = 1,
-    },
-    {
-        type = "item",
         name = "plh-storage-reader",
         icon = "__base__/graphics/icons/arithmetic-combinator.png",
         icon_size = 64,
@@ -407,24 +288,6 @@ data:extend({
         name = "plh-recipe-reader",
         ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
         results = {{type = "item", name = "plh-recipe-reader", amount = 1}},
-        enabled = false,
-        energy_required = 1,
-    },
-    {
-        type = "item",
-        name = "plh-quality-gate",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
-        icon_size = 64,
-        subgroup = "circuit-network",
-        order = "c[combinators]-z[plh-quality-gate]",
-        stack_size = 10,
-        place_result = "plh-quality-gate",
-    },
-    {
-        type = "recipe",
-        name = "plh-quality-gate",
-        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
-        results = {{type = "item", name = "plh-quality-gate", amount = 1}},
         enabled = false,
         energy_required = 1,
     },
