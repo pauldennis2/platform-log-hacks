@@ -13,3 +13,9 @@ shield reader
 turret targeting
 
 quality setter
+
+add upstep nowrap
+add downstep
+add downstep nowrap
+
+make custom circuits work in compakt
