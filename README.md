@@ -14,8 +14,20 @@ turret targeting
 
 quality setter
 
-add upstep nowrap
-add downstep
-add downstep nowrap
-
 make custom circuits work in compakt
+
+Note on storage reader, it's per slot
+
+Cannot show actual output
+
+recipe reader refinements
+
+test quality stepper with liquids - no signal passed through
+
+and power graphic to PRD
+
+test subtype spreader and fix to subtype for asteroids
+
+write docs - readme in particular
+
+fix or remove the small sattelite

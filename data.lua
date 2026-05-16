@@ -166,6 +166,26 @@ type_gate_out.collision_mask = {layers = {}}
 type_gate_out.selection_box = {{0, 0}, {0, 0}}
 hide_companion(type_gate_out)
 
+-- Subtype Gate: passes only item signals of the selected item subgroup (e.g. belt, ammo, module)
+local subtype_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
+subtype_gate.name = "plh-subtype-gate"
+subtype_gate.minable = {mining_time = 0.1, result = "plh-subtype-gate"}
+
+local subtype_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+subtype_gate_out.name = "plh-subtype-gate-output"
+subtype_gate_out.minable = nil
+subtype_gate_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
+subtype_gate_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
+subtype_gate_out.collision_mask = {layers = {}}
+subtype_gate_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(subtype_gate_out)
+
+-- Subtype Spreader: outputs all items of the selected subgroup with count 1.
+-- Uses a constant combinator directly — no hidden companion needed.
+local subtype_spreader = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+subtype_spreader.name = "plh-subtype-spreader"
+subtype_spreader.minable = {mining_time = 0.1, result = "plh-subtype-spreader"}
+
 data:extend({
     receiver,
     console,
@@ -181,6 +201,9 @@ data:extend({
     reader_out,
     type_gate,
     type_gate_out,
+    subtype_gate,
+    subtype_gate_out,
+    subtype_spreader,
     {
         type = "item",
         name = "plh-type-detector",
@@ -306,6 +329,42 @@ data:extend({
         name = "plh-type-gate",
         ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
         results = {{type = "item", name = "plh-type-gate", amount = 1}},
+        enabled = false,
+        energy_required = 1,
+    },
+    {
+        type = "item",
+        name = "plh-subtype-spreader",
+        icon = "__base__/graphics/icons/constant-combinator.png",
+        icon_size = 64,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-subtype-spreader]",
+        stack_size = 10,
+        place_result = "plh-subtype-spreader",
+    },
+    {
+        type = "recipe",
+        name = "plh-subtype-spreader",
+        ingredients = {{type = "item", name = "constant-combinator", amount = 1}},
+        results = {{type = "item", name = "plh-subtype-spreader", amount = 1}},
+        enabled = false,
+        energy_required = 1,
+    },
+    {
+        type = "item",
+        name = "plh-subtype-gate",
+        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon_size = 64,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-subtype-gate]",
+        stack_size = 10,
+        place_result = "plh-subtype-gate",
+    },
+    {
+        type = "recipe",
+        name = "plh-subtype-gate",
+        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
+        results = {{type = "item", name = "plh-subtype-gate", amount = 1}},
         enabled = false,
         energy_required = 1,
     },

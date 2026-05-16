@@ -159,7 +159,35 @@ for cat, sig_name in pairs(CATEGORY_SIGNAL) do
     SIGNAL_CATEGORY[sig_name] = cat
 end
 
-local item_cat_cache = {}
+local item_cat_cache      = {}
+local item_subgroup_cache = {}
+
+local function get_item_subgroup(name)
+    local cached = item_subgroup_cache[name]
+    if cached ~= nil then return cached end
+    local proto = prototypes.item[name]
+    local sg = proto and proto.subgroup and proto.subgroup.name or ""
+    item_subgroup_cache[name] = sg
+    return sg
+end
+
+-- Returns subgroup name for item and asteroid-chunk signals; nil for virtual/quality/etc.
+local function get_material_subgroup(sig_type, sig_name)
+    if sig_type == nil then
+        return get_item_subgroup(sig_name)
+    elseif sig_type == "asteroid-chunk" then
+        local key = "ac\0" .. sig_name
+        local cached = item_subgroup_cache[key]
+        if cached ~= nil then return cached end
+        local ac_protos = prototypes["asteroid-chunk"]
+        local proto = ac_protos and ac_protos[sig_name]
+        local sg = proto and proto.subgroup and proto.subgroup.name or ""
+        item_subgroup_cache[key] = sg
+        return sg
+    end
+    return nil  -- virtual, space-location, quality, fluid — caller passes through
+end
+
 local function categorize(name)
     local cached = item_cat_cache[name]
     if cached then return cached end
@@ -512,6 +540,7 @@ local READER_OUTPUT = "plh-recipe-reader-output"
 -- Module-level caches; rebuilt lazily from prototypes, reset on config change.
 local producer_cache       = nil
 local all_producers_cache  = nil
+local best_producer_cache  = nil
 local ingredient_cache     = nil
 
 local function get_producer_cache()
@@ -620,6 +649,74 @@ local function build_all_producers_filters(signals)
     return filters
 end
 
+local function get_best_producer_cache()
+    if best_producer_cache then return best_producer_cache end
+
+    -- category → fastest player-buildable machine (by crafting_speed)
+    local category_best = {}
+    for _, entity in pairs(prototypes.entity) do
+        local etype = entity.type
+        if etype == "assembling-machine" or etype == "furnace" or etype == "rocket-silo" then
+            if prototypes.item[entity.name] then
+                local speed = entity.crafting_speed or 1
+                for cat in pairs(entity.crafting_categories or {}) do
+                    local cur = category_best[cat]
+                    if not cur or speed > cur.speed then
+                        category_best[cat] = {name = entity.name, speed = speed}
+                    end
+                end
+            end
+        end
+    end
+
+    -- item → single fastest machine across all non-recycling recipes that produce it
+    local item_best = {}
+    for _, recipe in pairs(prototypes.recipe) do
+        local cat = recipe.category or "crafting"
+        if cat ~= "recycling" then
+            local best = category_best[cat]
+            if best then
+                for _, product in pairs(recipe.products or {}) do
+                    if product.type == "item" then
+                        local cur = item_best[product.name]
+                        if not cur or best.speed > cur.speed then
+                            item_best[product.name] = best
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    best_producer_cache = {}
+    for item_name, best in pairs(item_best) do
+        best_producer_cache[item_name] = best.name
+    end
+
+    return best_producer_cache
+end
+
+local function build_best_producer_filters(signals)
+    local cache = get_best_producer_cache()
+    local machine_counts = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local machine = cache[sig.signal.name]
+            if machine then
+                machine_counts[machine] = (machine_counts[machine] or 0) + sig.count
+            end
+        end
+    end
+    local filters = {}
+    for machine_name, count in pairs(machine_counts) do
+        filters[#filters + 1] = {
+            value = {type = "item", name = machine_name, quality = "normal"},
+            min   = count,
+        }
+    end
+    return filters
+end
+
 local function get_ingredient_cache()
     if ingredient_cache then return ingredient_cache end
     ingredient_cache = {}
@@ -690,6 +787,9 @@ local function update_recipe_reader(entity)
         return
     elseif mode == "all-producers" then
         section.filters = build_all_producers_filters(signals)
+        return
+    elseif mode == "best-producer" then
+        section.filters = build_best_producer_filters(signals)
         return
     end
 
@@ -851,6 +951,180 @@ local function on_type_gate_removed(event)
     for _, player in pairs(game.players) do
         if storage.type_gate_player_entity[player.index] == entity.unit_number then
             Gui.close_type_gate(player)
+        end
+    end
+end
+
+-- ── Subtype Gate ──────────────────────────────────────────────────────────────
+
+local SUBTYPE_GATE_NAME   = "plh-subtype-gate"
+local SUBTYPE_GATE_OUTPUT = "plh-subtype-gate-output"
+
+local function update_subtype_gate(entity)
+    local id     = entity.unit_number
+    local output = storage.subtype_gate_outputs[id]
+    if not (output and output.valid) then return end
+
+    local signals  = read_input(entity)
+    local subgroup = storage.subtype_gate_subgroup[id] or ""
+    local mode     = storage.subtype_gate_mode[id] or "allow"
+    local key      = signals_key(signals, mode .. subgroup)
+    if key == storage.entity_keys[id] then return end
+    storage.entity_keys[id] = key
+
+    local section = get_output_section(output)
+    if not signals then section.filters = {} return end
+
+    local filters = {}
+    for _, sig in ipairs(signals) do
+        local sg = get_material_subgroup(sig.signal.type, sig.signal.name)
+        if sg ~= nil then
+            local matches = sg == subgroup
+            if (mode == "allow") == matches then
+                filters[#filters + 1] = {
+                    value = {type = sig.signal.type or "item", name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                    min   = sig.count,
+                }
+            end
+        else
+            -- virtual, space-location, quality, fluid — pass through unconditionally
+            filters[#filters + 1] = {
+                value = {type = sig.signal.type, name = sig.signal.name, quality = sig.signal.quality or "normal"},
+                min   = sig.count,
+            }
+        end
+    end
+
+    section.filters = filters
+end
+
+local function on_subtype_gate_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == SUBTYPE_GATE_NAME) then return end
+
+    local output = entity.surface.create_entity({
+        name        = SUBTYPE_GATE_OUTPUT,
+        position    = entity.position,
+        force       = entity.force,
+        raise_built = false,
+    })
+    if not output then return end
+
+    wire_companion(entity, output)
+    init_output(output)
+    storage.subtype_gates[entity.unit_number]        = entity
+    storage.subtype_gate_outputs[entity.unit_number] = output
+end
+
+local function on_subtype_gate_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == SUBTYPE_GATE_NAME) then return end
+
+    local output = storage.subtype_gate_outputs[entity.unit_number]
+    if output and output.valid then output.destroy() end
+    storage.subtype_gates[entity.unit_number]           = nil
+    storage.subtype_gate_outputs[entity.unit_number]    = nil
+    storage.subtype_gate_subgroup[entity.unit_number]   = nil
+    storage.subtype_gate_mode[entity.unit_number]       = nil
+    storage.entity_keys[entity.unit_number]             = nil
+
+    for _, player in pairs(game.players) do
+        if storage.subtype_gate_player_entity[player.index] == entity.unit_number then
+            Gui.close_subtype_gate(player)
+        end
+    end
+end
+
+-- ── Subtype Spreader ──────────────────────────────────────────────────────────
+
+local SUBTYPE_SPREADER_NAME   = "plh-subtype-spreader"
+local PLH_SPREADER_GROUP      = "plh-spreader"
+local subtype_spreader_cache  = {}  -- subgroup_name → list of {type, name}
+
+local function get_subgroup_items(subgroup)
+    if subtype_spreader_cache[subgroup] then return subtype_spreader_cache[subgroup] end
+    local items = {}
+    for name, proto in pairs(prototypes.item) do
+        if proto.subgroup and proto.subgroup.name == subgroup then
+            items[#items + 1] = {type = "item", name = name}
+        end
+    end
+    local ac_protos = prototypes["asteroid-chunk"]
+    if ac_protos then
+        for name, proto in pairs(ac_protos) do
+            if proto.subgroup and proto.subgroup.name == subgroup then
+                items[#items + 1] = {type = "asteroid-chunk", name = name}
+            end
+        end
+    end
+    table.sort(items, function(a, b)
+        if a.type ~= b.type then return a.type < b.type end
+        return a.name < b.name
+    end)
+    subtype_spreader_cache[subgroup] = items
+    return items
+end
+
+local function update_subtype_spreader(entity)
+    local id       = entity.unit_number
+    local subgroup = storage.subtype_spreader_subgroup[id] or ""
+    if subgroup == storage.entity_keys[id] then return end
+    storage.entity_keys[id] = subgroup
+
+    local behavior = entity.get_or_create_control_behavior()
+    behavior.enabled = true
+
+    -- Remove all existing plh-spreader sections
+    local i = 1
+    while i <= behavior.sections_count do
+        local s = behavior.get_section(i)
+        if s and s.group == PLH_SPREADER_GROUP then
+            behavior.remove_section(i)
+        else
+            i = i + 1
+        end
+    end
+
+    if subgroup == "" then return end
+
+    local items = get_subgroup_items(subgroup)
+    if #items == 0 then return end
+
+    -- Write items in chunks of 1000 (section filter limit)
+    local CHUNK = 1000
+    for offset = 0, #items - 1, CHUNK do
+        local s = behavior.add_section(PLH_SPREADER_GROUP)
+        s.active = true
+        local filters = {}
+        for j = 1, math.min(CHUNK, #items - offset) do
+            local item = items[offset + j]
+            filters[j] = {
+                value = {type = item.type, name = item.name, quality = "normal"},
+                min   = 1,
+            }
+        end
+        s.filters = filters
+    end
+end
+
+local function on_subtype_spreader_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == SUBTYPE_SPREADER_NAME) then return end
+    storage.subtype_spreaders[entity.unit_number] = entity
+    local behavior = entity.get_or_create_control_behavior()
+    behavior.enabled = true
+end
+
+local function on_subtype_spreader_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == SUBTYPE_SPREADER_NAME) then return end
+    storage.subtype_spreaders[entity.unit_number]          = nil
+    storage.subtype_spreader_subgroup[entity.unit_number]  = nil
+    storage.entity_keys[entity.unit_number]                = nil
+
+    for _, player in pairs(game.players) do
+        if storage.subtype_spreader_player_entity[player.index] == entity.unit_number then
+            Gui.close_subtype_spreader(player)
         end
     end
 end
@@ -1022,6 +1296,7 @@ local function rescan_surfaces()
         {STORAGE_READER_NAME, STORAGE_READER_OUTPUT, storage.storage_readers, storage.storage_reader_outputs},
         {READER_NAME,         READER_OUTPUT,         storage.readers,         storage.reader_outputs},
         {TYPE_GATE_NAME,      TYPE_GATE_OUTPUT,      storage.type_gates,      storage.type_gate_outputs},
+        {SUBTYPE_GATE_NAME,   SUBTYPE_GATE_OUTPUT,   storage.subtype_gates,   storage.subtype_gate_outputs},
     }
     for _, surface in pairs(game.surfaces) do
         for _, spec in ipairs(specs) do
@@ -1076,12 +1351,20 @@ script.on_init(function()
     storage.reader_outputs          = {}
     storage.reader_mode             = {}
     storage.reader_player_entity    = {}
-    storage.type_gates              = {}
-    storage.type_gate_outputs       = {}
-    storage.type_gate_type          = {}
-    storage.type_gate_mode          = {}
-    storage.type_gate_player_entity = {}
-    storage.entity_keys             = {}
+    storage.type_gates                 = {}
+    storage.type_gate_outputs          = {}
+    storage.type_gate_type             = {}
+    storage.type_gate_mode             = {}
+    storage.type_gate_player_entity    = {}
+    storage.subtype_gates                 = {}
+    storage.subtype_gate_outputs          = {}
+    storage.subtype_gate_subgroup         = {}
+    storage.subtype_gate_mode             = {}
+    storage.subtype_gate_player_entity    = {}
+    storage.subtype_spreaders             = {}
+    storage.subtype_spreader_subgroup     = {}
+    storage.subtype_spreader_player_entity= {}
+    storage.entity_keys                   = {}
 end)
 
 script.on_configuration_changed(function()
@@ -1102,16 +1385,34 @@ script.on_configuration_changed(function()
     storage.reader_outputs          = storage.reader_outputs          or {}
     storage.reader_mode             = storage.reader_mode             or {}
     storage.reader_player_entity    = storage.reader_player_entity    or {}
-    storage.type_gates              = storage.type_gates              or {}
-    storage.type_gate_outputs       = storage.type_gate_outputs       or {}
-    storage.type_gate_type          = storage.type_gate_type          or {}
-    storage.type_gate_mode          = storage.type_gate_mode          or {}
-    storage.type_gate_player_entity = storage.type_gate_player_entity or {}
-    storage.entity_keys             = {}   -- clear change-detection cache; rescan re-writes all filters
-    producer_cache                  = nil  -- rebuild from updated prototypes
-    all_producers_cache             = nil
-    ingredient_cache                = nil
+    storage.type_gates                 = storage.type_gates                 or {}
+    storage.type_gate_outputs          = storage.type_gate_outputs          or {}
+    storage.type_gate_type             = storage.type_gate_type             or {}
+    storage.type_gate_mode             = storage.type_gate_mode             or {}
+    storage.type_gate_player_entity    = storage.type_gate_player_entity    or {}
+    storage.subtype_gates                  = storage.subtype_gates                  or {}
+    storage.subtype_gate_outputs           = storage.subtype_gate_outputs           or {}
+    storage.subtype_gate_subgroup          = storage.subtype_gate_subgroup          or {}
+    storage.subtype_gate_mode              = storage.subtype_gate_mode              or {}
+    storage.subtype_gate_player_entity     = storage.subtype_gate_player_entity     or {}
+    storage.subtype_spreaders              = storage.subtype_spreaders              or {}
+    storage.subtype_spreader_subgroup      = storage.subtype_spreader_subgroup      or {}
+    storage.subtype_spreader_player_entity = storage.subtype_spreader_player_entity or {}
+    storage.entity_keys                    = {}   -- clear change-detection cache; rescan re-writes all filters
+    producer_cache                     = nil  -- rebuild from updated prototypes
+    all_producers_cache                = nil
+    best_producer_cache                = nil
+    ingredient_cache                   = nil
+    item_subgroup_cache                = {}
+    subtype_spreader_cache             = {}
     rescan_surfaces()
+    -- Re-register spreaders and refresh their output (no companion pattern)
+    for _, surface in pairs(game.surfaces) do
+        for _, entity in ipairs(surface.find_entities_filtered({name = SUBTYPE_SPREADER_NAME})) do
+            storage.subtype_spreaders[entity.unit_number] = entity
+            update_subtype_spreader(entity)
+        end
+    end
 end)
 
 
@@ -1123,6 +1424,8 @@ local function on_built(event)
     on_storage_reader_built(event)
     on_reader_built(event)
     on_type_gate_built(event)
+    on_subtype_gate_built(event)
+    on_subtype_spreader_built(event)
 end
 
 local function on_removed(event)
@@ -1133,6 +1436,8 @@ local function on_removed(event)
     on_storage_reader_removed(event)
     on_reader_removed(event)
     on_type_gate_removed(event)
+    on_subtype_gate_removed(event)
+    on_subtype_spreader_removed(event)
 end
 
 -- Engine-level name filters: Factorio skips the Lua callback entirely for
@@ -1140,7 +1445,7 @@ end
 local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
     DRIVER_NAME, DETECTOR_NAME, QUALITY_READER_NAME, MODULATOR_NAME,
-    STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
+    STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME, SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
 end
@@ -1193,5 +1498,13 @@ script.on_nth_tick(6, function()
     for id, entity in pairs(storage.type_gates) do
         if entity and entity.valid then update_type_gate(entity)
         else storage.type_gates[id] = nil; storage.type_gate_outputs[id] = nil end
+    end
+    for id, entity in pairs(storage.subtype_gates) do
+        if entity and entity.valid then update_subtype_gate(entity)
+        else storage.subtype_gates[id] = nil; storage.subtype_gate_outputs[id] = nil end
+    end
+    for id, entity in pairs(storage.subtype_spreaders) do
+        if entity and entity.valid then update_subtype_spreader(entity)
+        else storage.subtype_spreaders[id] = nil end
     end
 end)

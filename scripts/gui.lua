@@ -22,8 +22,45 @@ local TYPE_GATE_MODE_ROW      = "plh-type-gate-mode-row"
 local TYPE_GATE_DROPDOWN      = "plh-type-gate-type-dropdown"
 local TYPE_GATE_TYPE_ROW      = "plh-type-gate-type-row"
 
+local SUBTYPE_SPREADER_NAME         = "plh-subtype-spreader"
+local SUBTYPE_SPREADER_FRAME        = "plh-subtype-spreader-frame"
+local SUBTYPE_SPREADER_CLOSE_BTN    = "plh-subtype-spreader-close"
+local SPREADER_SEL_ROW              = "plh-subtype-spreader-sel-row"
+local SPREADER_SELECTED_LABEL       = "plh-subtype-spreader-selected"
+local SPREADER_SEARCH_ROW           = "plh-subtype-spreader-search-row"
+local SPREADER_SEARCH_FIELD         = "plh-subtype-spreader-search"
+local SPREADER_LIST                 = "plh-subtype-spreader-list"
+
+local SUBTYPE_GATE_NAME           = "plh-subtype-gate"
+local SUBTYPE_GATE_FRAME          = "plh-subtype-gate-frame"
+local SUBTYPE_GATE_CLOSE_BTN      = "plh-subtype-gate-close"
+local SUBTYPE_GATE_MODE_DROPDOWN  = "plh-subtype-gate-mode-dropdown"
+local SUBTYPE_GATE_MODE_ROW       = "plh-subtype-gate-mode-row"
+local SUBTYPE_SEL_ROW             = "plh-subtype-gate-sel-row"
+local SUBTYPE_SELECTED_LABEL      = "plh-subtype-gate-selected"
+local SUBTYPE_SEARCH_ROW          = "plh-subtype-gate-search-row"
+local SUBTYPE_SEARCH_FIELD        = "plh-subtype-gate-search"
+local SUBTYPE_LIST                = "plh-subtype-gate-list"
+
 local GATE_MODES = {"allow", "exclude", "signal"}
 local TYPE_NAMES = {"intermediate", "logistics", "production", "combat", "module", "other"}
+
+local function filter_subgroups(query)
+    local names = {}
+    for name in pairs(prototypes.item_subgroup) do
+        names[#names + 1] = name
+    end
+    table.sort(names)
+    if query == "" then return names end
+    local q = query:lower()
+    local result = {}
+    for _, name in ipairs(names) do
+        if name:lower():find(q, 1, true) then
+            result[#result + 1] = name
+        end
+    end
+    return result
+end
 local STEPS_VALUES = {-4, -3, -2, -1, 1, 2, 3, 4}
 
 local function make_titlebar(frame, caption, close_btn_name)
@@ -61,14 +98,20 @@ function Gui.create_reader(player, entity)
     make_titlebar(frame, {"entity-name.plh-recipe-reader"}, READER_CLOSE_BTN)
 
     local mode = storage.reader_mode[entity.unit_number] or "producer"
-    local mode_index = mode == "all-producers" and 2 or mode == "ingredients" and 3 or 1
+    local mode_index = mode == "all-producers" and 2 or mode == "best-producer" and 3
+                    or mode == "ingredients" and 4 or 1
     local row = frame.add{type = "flow", direction = "horizontal"}
     row.style.vertical_align = "center"
     row.add{type = "label", caption = {"plh-gui.mode"}}
     row.add{
         type           = "drop-down",
         name           = READER_MODE_DROPDOWN,
-        items          = {{"plh-gui.reader-producer"}, {"plh-gui.reader-all-producers"}, {"plh-gui.reader-ingredients"}},
+        items          = {
+            {"plh-gui.reader-producer"},
+            {"plh-gui.reader-all-producers"},
+            {"plh-gui.reader-best-producer"},
+            {"plh-gui.reader-ingredients"},
+        },
         selected_index = mode_index,
     }
 
@@ -177,6 +220,90 @@ function Gui.create_type_gate(player, entity)
     storage.type_gate_player_entity[player.index] = entity.unit_number
 end
 
+function Gui.close_subtype_spreader(player)
+    local frame = player.gui.screen[SUBTYPE_SPREADER_FRAME]
+    if frame and frame.valid then frame.destroy() end
+    player.opened = nil
+    storage.subtype_spreader_player_entity[player.index] = nil
+end
+
+function Gui.create_subtype_spreader(player, entity)
+    local existing = player.gui.screen[SUBTYPE_SPREADER_FRAME]
+    if existing then existing.destroy() end
+
+    local frame = player.gui.screen.add{type = "frame", name = SUBTYPE_SPREADER_FRAME, direction = "vertical"}
+    frame.auto_center = true
+    make_titlebar(frame, {"entity-name.plh-subtype-spreader"}, SUBTYPE_SPREADER_CLOSE_BTN)
+
+    local subgroup = storage.subtype_spreader_subgroup[entity.unit_number] or ""
+    local sel_row = frame.add{type = "flow", name = SPREADER_SEL_ROW, direction = "horizontal"}
+    sel_row.style.vertical_align = "center"
+    sel_row.add{type = "label", caption = {"plh-gui.subtype-selected"}}
+    local sel_lbl = sel_row.add{type = "label", name = SPREADER_SELECTED_LABEL, caption = subgroup}
+    sel_lbl.style.font = "default-bold"
+
+    local search_row = frame.add{type = "flow", name = SPREADER_SEARCH_ROW, direction = "horizontal"}
+    search_row.style.vertical_align = "center"
+    search_row.add{type = "label", caption = {"plh-gui.subtype-search"}}
+    local tf = search_row.add{type = "textfield", name = SPREADER_SEARCH_FIELD, text = ""}
+    tf.style.width = 180
+
+    local list = frame.add{type = "list-box", name = SPREADER_LIST, items = filter_subgroups("")}
+    list.style.height = 200
+    list.style.width  = 260
+
+    player.opened = frame
+    storage.subtype_spreader_player_entity[player.index] = entity.unit_number
+end
+
+function Gui.close_subtype_gate(player)
+    local frame = player.gui.screen[SUBTYPE_GATE_FRAME]
+    if frame and frame.valid then frame.destroy() end
+    player.opened = nil
+    storage.subtype_gate_player_entity[player.index] = nil
+end
+
+function Gui.create_subtype_gate(player, entity)
+    local existing = player.gui.screen[SUBTYPE_GATE_FRAME]
+    if existing then existing.destroy() end
+
+    local frame = player.gui.screen.add{type = "frame", name = SUBTYPE_GATE_FRAME, direction = "vertical"}
+    frame.auto_center = true
+    make_titlebar(frame, {"entity-name.plh-subtype-gate"}, SUBTYPE_GATE_CLOSE_BTN)
+
+    local mode = storage.subtype_gate_mode[entity.unit_number] or "allow"
+    local mode_index = mode == "exclude" and 2 or 1
+    local mode_row = frame.add{type = "flow", name = SUBTYPE_GATE_MODE_ROW, direction = "horizontal"}
+    mode_row.style.vertical_align = "center"
+    mode_row.add{type = "label", caption = {"plh-gui.gate-mode"}}
+    mode_row.add{
+        type           = "drop-down",
+        name           = SUBTYPE_GATE_MODE_DROPDOWN,
+        items          = {{"plh-gui.gate-allow"}, {"plh-gui.gate-exclude"}},
+        selected_index = mode_index,
+    }
+
+    local subgroup = storage.subtype_gate_subgroup[entity.unit_number] or ""
+    local sel_row = frame.add{type = "flow", name = SUBTYPE_SEL_ROW, direction = "horizontal"}
+    sel_row.style.vertical_align = "center"
+    sel_row.add{type = "label", caption = {"plh-gui.subtype-selected"}}
+    local sel_lbl = sel_row.add{type = "label", name = SUBTYPE_SELECTED_LABEL, caption = subgroup}
+    sel_lbl.style.font = "default-bold"
+
+    local search_row = frame.add{type = "flow", name = SUBTYPE_SEARCH_ROW, direction = "horizontal"}
+    search_row.style.vertical_align = "center"
+    search_row.add{type = "label", caption = {"plh-gui.subtype-search"}}
+    local tf = search_row.add{type = "textfield", name = SUBTYPE_SEARCH_FIELD, text = ""}
+    tf.style.width = 180
+
+    local list = frame.add{type = "list-box", name = SUBTYPE_LIST, items = filter_subgroups("")}
+    list.style.height = 200
+    list.style.width  = 260
+
+    player.opened = frame
+    storage.subtype_gate_player_entity[player.index] = entity.unit_number
+end
+
 script.on_event(defines.events.on_gui_opened, function(event)
     if not event.entity then return end
     local player = game.players[event.player_index]
@@ -189,6 +316,12 @@ script.on_event(defines.events.on_gui_opened, function(event)
     elseif event.entity.name == TYPE_GATE_NAME then
         player.opened = nil
         Gui.create_type_gate(player, event.entity)
+    elseif event.entity.name == SUBTYPE_GATE_NAME then
+        player.opened = nil
+        Gui.create_subtype_gate(player, event.entity)
+    elseif event.entity.name == SUBTYPE_SPREADER_NAME then
+        player.opened = nil
+        Gui.create_subtype_spreader(player, event.entity)
     end
 end)
 
@@ -197,7 +330,9 @@ script.on_event(defines.events.on_gui_closed, function(event)
     if event.entity then
         if event.entity.name == READER_NAME    then Gui.close_reader(player)    end
         if event.entity.name == MODULATOR_NAME then Gui.close_modulator(player) end
-        if event.entity.name == TYPE_GATE_NAME then Gui.close_type_gate(player) end
+        if event.entity.name == TYPE_GATE_NAME    then Gui.close_type_gate(player)    end
+        if event.entity.name == SUBTYPE_GATE_NAME     then Gui.close_subtype_gate(player)     end
+        if event.entity.name == SUBTYPE_SPREADER_NAME  then Gui.close_subtype_spreader(player)  end
         return
     end
     if not event.element then return end
@@ -210,6 +345,12 @@ script.on_event(defines.events.on_gui_closed, function(event)
     elseif event.element.name == TYPE_GATE_FRAME then
         if event.element.valid then event.element.destroy() end
         storage.type_gate_player_entity[player.index] = nil
+    elseif event.element.name == SUBTYPE_GATE_FRAME then
+        if event.element.valid then event.element.destroy() end
+        storage.subtype_gate_player_entity[player.index] = nil
+    elseif event.element.name == SUBTYPE_SPREADER_FRAME then
+        if event.element.valid then event.element.destroy() end
+        storage.subtype_spreader_player_entity[player.index] = nil
     end
 end)
 
@@ -222,6 +363,10 @@ script.on_event(defines.events.on_gui_click, function(event)
         Gui.close_modulator(player)
     elseif event.element.name == TYPE_GATE_CLOSE_BTN then
         Gui.close_type_gate(player)
+    elseif event.element.name == SUBTYPE_GATE_CLOSE_BTN then
+        Gui.close_subtype_gate(player)
+    elseif event.element.name == SUBTYPE_SPREADER_CLOSE_BTN then
+        Gui.close_subtype_spreader(player)
     end
 end)
 
@@ -237,9 +382,11 @@ script.on_event(defines.events.on_player_changed_position, function(event)
         if dx * dx + dy * dy > 100 then close_fn(player) end
     end
 
-    check_proximity(storage.reader_player_entity[player.index],    storage.readers,    Gui.close_reader)
-    check_proximity(storage.modulator_player_entity[player.index], storage.modulators, Gui.close_modulator)
-    check_proximity(storage.type_gate_player_entity[player.index], storage.type_gates, Gui.close_type_gate)
+    check_proximity(storage.reader_player_entity[player.index],      storage.readers,      Gui.close_reader)
+    check_proximity(storage.modulator_player_entity[player.index],   storage.modulators,   Gui.close_modulator)
+    check_proximity(storage.type_gate_player_entity[player.index],   storage.type_gates,   Gui.close_type_gate)
+    check_proximity(storage.subtype_gate_player_entity[player.index],   storage.subtype_gates,    Gui.close_subtype_gate)
+    check_proximity(storage.subtype_spreader_player_entity[player.index],storage.subtype_spreaders,Gui.close_subtype_spreader)
 end)
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
@@ -250,7 +397,8 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
         local unit_number = storage.reader_player_entity[player.index]
         if not unit_number then return end
         local idx = event.element.selected_index
-        storage.reader_mode[unit_number] = idx == 2 and "all-producers" or idx == 3 and "ingredients" or "producer"
+        storage.reader_mode[unit_number] = idx == 2 and "all-producers" or idx == 3 and "best-producer"
+                                        or idx == 4 and "ingredients" or "producer"
     elseif event.element.name == MODULATOR_DROPDOWN or event.element.name == MODULATOR_STEPS_DROPDOWN then
         local unit_number = storage.modulator_player_entity[player.index]
         if not unit_number then return end
@@ -288,6 +436,67 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
                     if tdd and tdd.valid then tdd.enabled = new_mode ~= "signal" end
                 end
             end
+        end
+    elseif event.element.name == SUBTYPE_GATE_MODE_DROPDOWN then
+        local unit_number = storage.subtype_gate_player_entity[player.index]
+        if not unit_number then return end
+        local new_mode = event.element.selected_index == 2 and "exclude" or "allow"
+        storage.subtype_gate_mode[unit_number] = new_mode
+    elseif event.element.name == SUBTYPE_LIST then
+        local unit_number = storage.subtype_gate_player_entity[player.index]
+        if not unit_number then return end
+        local idx = event.element.selected_index
+        local items = event.element.items
+        if idx > 0 and items[idx] then
+            local selected = items[idx]
+            storage.subtype_gate_subgroup[unit_number] = selected
+            local frame = player.gui.screen[SUBTYPE_GATE_FRAME]
+            if frame and frame.valid then
+                local sel_row = frame[SUBTYPE_SEL_ROW]
+                if sel_row and sel_row.valid then
+                    local lbl = sel_row[SUBTYPE_SELECTED_LABEL]
+                    if lbl and lbl.valid then lbl.caption = selected end
+                end
+            end
+        end
+    elseif event.element.name == SPREADER_LIST then
+        local unit_number = storage.subtype_spreader_player_entity[player.index]
+        if not unit_number then return end
+        local idx = event.element.selected_index
+        local items = event.element.items
+        if idx > 0 and items[idx] then
+            local selected = items[idx]
+            storage.subtype_spreader_subgroup[unit_number] = selected
+            local frame = player.gui.screen[SUBTYPE_SPREADER_FRAME]
+            if frame and frame.valid then
+                local sel_row = frame[SPREADER_SEL_ROW]
+                if sel_row and sel_row.valid then
+                    local lbl = sel_row[SPREADER_SELECTED_LABEL]
+                    if lbl and lbl.valid then lbl.caption = selected end
+                end
+            end
+        end
+    end
+end)
+
+script.on_event(defines.events.on_gui_text_changed, function(event)
+    if not event.element then return end
+    local player = game.players[event.player_index]
+    if event.element.name == SUBTYPE_SEARCH_FIELD then
+        local frame = player.gui.screen[SUBTYPE_GATE_FRAME]
+        if not (frame and frame.valid) then return end
+        local list = frame[SUBTYPE_LIST]
+        if list and list.valid then
+            list.items = filter_subgroups(event.element.text)
+            list.selected_index = 0
+        end
+    elseif event.element.name == SPREADER_SEARCH_FIELD then
+        local frame = player.gui.screen[SUBTYPE_SPREADER_FRAME]
+        if not (frame and frame.valid) then return end
+        local list = frame[SPREADER_LIST]
+        if list and list.valid then
+            list.items = filter_subgroups(event.element.text)
+            list.selected_index = 0
         end
     end
 end)
