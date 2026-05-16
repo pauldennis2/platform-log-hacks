@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.3.0
+- Fix: Recipe Reader no longer outputs recycler for basic items (recycling crafting category excluded)
+- Fix: Recipe Reader output count now reflects item quantity rather than always 1 per item type
+- Fix: Signal Type Detector now outputs virtual signals correctly (quality field required in Factorio 2.0 section filters)
+- Fix: Non-recoverable crash on game load when entity_keys storage table was absent
+- Perf: Change detection across all update functions — section.filters write skipped when input is unchanged
+- Perf: Update tick rate reduced from every 2 to every 6 ticks
+- Perf: Signal Type Detector categorize() now caches prototype lookups
+
+## 0.2.0
+- Fix: rescan all surfaces on_configuration_changed to register entities whose output companion was silently lost (fixes Quality Reader, Storage Reader, Recipe Reader, Quality Gate not outputting)
+- Perf: add engine-level entity name filters to built/mined event handlers (eliminates callbacks for all non-PLH entities)
+- Perf: move companion combinator initialization (enabled, section.active) from every-tick path to placement time
+
+## 0.1.9
+- Quality Modulator and Quality Gate: add X close button, draggable titlebar, fix Escape not closing the GUI
+
+## 0.1.8
+- Storage Reader: remove custom virtual signal, output signal-A = % available space (100 - % full)
+
+## 0.1.7
+- Add Quality Reader: strips item identity from signals, outputs quality signals summed across all input items
+
+## 0.1.6
+- Quality Gate: add "Signal" mode — passes items whose quality matches any quality signal present on the input
+
+## 0.1.5
+- Quality Gate: add mode dropdown — "Allow only" (existing behavior) or "Allow all but" (inverted)
+
+## 0.1.4
+- Add Quality Multiplexer: sums each input item across all qualities, outputs that total at every quality tier
+
+## 0.1.3
+- Add Storage Reader: outputs plh-sig-fullness (0-100) for directly-wired chests or fluid tanks; averages across multiple connected storages
+
+## 0.1.2
+- Add Recipe Reader: outputs a building signal for each input item (the machine that produces it); count = number of distinct input items using that machine type
+
+## 0.1.1
+- Add Quality Gate: passes only item signals matching the selected quality tier
+
+## 0.1.0
+- Quality Modulator: add Steps dropdown (1-4) for upstep mode; quality wraps circularly (legendary+1 = normal)
+- Quality Upstepper and Modulator upstep now share the same wrapping modular-arithmetic quality logic
+
 ## 0.0.8
 - Add Quality Modulator: single entity with Upstep/Remove mode selectable via dropdown GUI
 
