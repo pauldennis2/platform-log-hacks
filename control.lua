@@ -659,11 +659,12 @@ local function get_best_producer_cache()
         if etype == "assembling-machine" or etype == "furnace" or etype == "rocket-silo" then
             if prototypes.item[entity.name] then
                 local ok, speed = pcall(function() return entity.crafting_speed end)
-                if not ok then speed = 1 end
-                for cat in pairs(entity.crafting_categories or {}) do
-                    local cur = category_best[cat]
-                    if not cur or speed > cur.speed then
-                        category_best[cat] = {name = entity.name, speed = speed}
+                if ok and type(speed) == "number" then
+                    for cat in pairs(entity.crafting_categories or {}) do
+                        local cur = category_best[cat]
+                        if not cur or speed > cur.speed then
+                            category_best[cat] = {name = entity.name, speed = speed}
+                        end
                     end
                 end
             end
@@ -1334,6 +1335,8 @@ end
 
 -- ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+local register_compaktcircuit  -- forward declaration; defined in the CC block below
+
 script.on_init(function()
     storage.consoles                = {}
     storage.plh_active_planet       = {}
@@ -1366,6 +1369,11 @@ script.on_init(function()
     storage.subtype_spreader_subgroup     = {}
     storage.subtype_spreader_player_entity= {}
     storage.entity_keys                   = {}
+    register_compaktcircuit()
+end)
+
+script.on_load(function()
+    register_compaktcircuit()
 end)
 
 script.on_configuration_changed(function()
@@ -1420,8 +1428,87 @@ script.on_configuration_changed(function()
             entity.destroy()
         end
     end
+    register_compaktcircuit()
 end)
 
+
+-- ── Compact Circuits integration ──────────────────────────────────────────────
+
+local function get_entity_state(entity)
+    local id   = entity.unit_number
+    local name = entity.name
+    if name == MODULATOR_NAME then
+        return {mode = storage.modulator_mode[id], steps = storage.modulator_steps[id]}
+    elseif name == READER_NAME then
+        return {reader_mode = storage.reader_mode[id]}
+    elseif name == TYPE_GATE_NAME then
+        return {gate_mode = storage.type_gate_mode[id], gate_type = storage.type_gate_type[id]}
+    elseif name == SUBTYPE_GATE_NAME then
+        return {gate_mode = storage.subtype_gate_mode[id], subgroup = storage.subtype_gate_subgroup[id]}
+    elseif name == SUBTYPE_SPREADER_NAME then
+        return {subgroup = storage.subtype_spreader_subgroup[id]}
+    end
+    return {}
+end
+
+local function restore_entity_state(entity, info)
+    local id   = entity.unit_number
+    local name = entity.name
+    if name == MODULATOR_NAME then
+        if info.mode  then storage.modulator_mode[id]  = info.mode  end
+        if info.steps then storage.modulator_steps[id] = info.steps end
+    elseif name == READER_NAME then
+        if info.reader_mode then storage.reader_mode[id] = info.reader_mode end
+    elseif name == TYPE_GATE_NAME then
+        if info.gate_mode then storage.type_gate_mode[id] = info.gate_mode end
+        if info.gate_type then storage.type_gate_type[id] = info.gate_type end
+    elseif name == SUBTYPE_GATE_NAME then
+        if info.gate_mode then storage.subtype_gate_mode[id]    = info.gate_mode end
+        if info.subgroup  then storage.subtype_gate_subgroup[id] = info.subgroup  end
+    elseif name == SUBTYPE_SPREADER_NAME then
+        if info.subgroup  then storage.subtype_spreader_subgroup[id] = info.subgroup end
+    end
+end
+
+local function plh_create_entity(info, surface, position, force)
+    local entity = surface.create_entity({
+        name      = info.name,
+        position  = position or info.position,
+        direction = info.direction,
+        force     = force,
+    })
+    -- on_built fires synchronously above and sets defaults; overwrite with saved state.
+    if entity and entity.valid then
+        restore_entity_state(entity, info)
+    end
+    return entity
+end
+
+if script.active_mods["compaktcircuit"] then
+    remote.add_interface("platform-log-hacks", {
+        get_info             = get_entity_state,
+        create_packed_entity = function(info, surface, pos, force)
+            return plh_create_entity(info, surface, pos, force)
+        end,
+        create_entity        = function(info, surface, force)
+            return plh_create_entity(info, surface, nil, force)
+        end,
+    })
+end
+
+register_compaktcircuit = function()
+    if not script.active_mods["compaktcircuit"] then return end
+    for _, name in ipairs({
+        DRIVER_NAME, DETECTOR_NAME, QUALITY_READER_NAME, MODULATOR_NAME,
+        STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
+        SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
+    }) do
+        remote.call("compaktcircuit", "add_combinator", {
+            name           = name,
+            interface_name = "platform-log-hacks",
+        })
+    end
+end
 
 local function on_built(event)
     on_console_built(event)

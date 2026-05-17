@@ -8,6 +8,7 @@
   "dependencies": [
     "base >= 2.0.7",
     "space-age >= 2.0.7",
-    "aai-signal-transmission >= 0.5.3"
+    "aai-signal-transmission >= 0.5.3",
+    "? compaktcircuit"
   ]
 }
