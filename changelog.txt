@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1
+- Fix: Quality Reader now outputs quality-type signals correctly (explicit quality="normal" field required)
+- Add: Quality Modulator "Set Quality" mode — outputs all input signals at a fixed quality tier
+- Fix: Quality Modulator and Quality Multiplexer now handle all signal types (space-location, fluid, etc.), not just items
+- Fix: Blueprint and copy-paste settings now preserved for all custom combinators
+- Fix: Stale change-detection cache no longer persists across mod updates (on_configuration_changed clears entity_keys)
+
 ## 0.3.0
 - Fix: Recipe Reader no longer outputs recycler for basic items (recycling crafting category excluded)
 - Fix: Recipe Reader output count now reflects item quantity rather than always 1 per item type

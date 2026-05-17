@@ -1,7 +1,8 @@
 local Gui = require("scripts.gui")
 
 local DRIVER_NAME    = "plh-platform-request-driver"
-local SECTION_PREFIX = "plh-driver-"
+local SECTION_PREFIX = "plh-driver-"   -- legacy: old sections had unit_number suffix
+local SECTION_GROUP  = "plh-driver"    -- current: fixed name, one per platform
 
 -- ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -120,20 +121,44 @@ local function build_remove_filters(signals)
     return filters
 end
 
-local function build_multiplex_filters(signals)
+local function build_set_quality_filters(signals, quality)
     local totals = {}
     for _, sig in ipairs(signals) do
-        if sig.signal.type == nil then
-            local name = sig.signal.name
-            totals[name] = (totals[name] or 0) + sig.count
+        local t   = sig.signal.type or "item"
+        local key = t .. "\0" .. sig.signal.name
+        if totals[key] then
+            totals[key].count = totals[key].count + sig.count
+        else
+            totals[key] = {type = t, name = sig.signal.name, count = sig.count}
         end
     end
     local filters = {}
-    for name, total in pairs(totals) do
+    for _, entry in pairs(totals) do
+        filters[#filters + 1] = {
+            value = {type = entry.type, name = entry.name, quality = quality},
+            min   = entry.count,
+        }
+    end
+    return filters
+end
+
+local function build_multiplex_filters(signals)
+    local totals = {}
+    for _, sig in ipairs(signals) do
+        local t   = sig.signal.type or "item"
+        local key = t .. "\0" .. sig.signal.name
+        if totals[key] then
+            totals[key].count = totals[key].count + sig.count
+        else
+            totals[key] = {type = t, name = sig.signal.name, count = sig.count}
+        end
+    end
+    local filters = {}
+    for _, entry in pairs(totals) do
         for _, quality in ipairs(QUALITY_ORDER) do
             filters[#filters + 1] = {
-                value = {type = "item", name = name, quality = quality},
-                min   = total,
+                value = {type = entry.type, name = entry.name, quality = quality},
+                min   = entry.count,
             }
         end
     end
@@ -298,13 +323,10 @@ local function update_quality_reader(entity)
         end
     end
 
-    -- TODO: quality signals (type="quality") are accepted by section.filters and read back
-    -- correctly, but do not appear on the circuit network output. Cause unknown — may be a
-    -- Factorio API limitation. Needs further investigation or a virtual-signal workaround.
     local filters = {}
     for quality, count in pairs(totals) do
         filters[#filters + 1] = {
-            value = {type = "quality", name = quality},
+            value = {type = "quality", name = quality, quality = "normal"},
             min   = count,
         }
     end
@@ -351,9 +373,10 @@ local function update_modulator(entity)
     if not (output and output.valid) then return end
 
     local signals = read_input(entity)
-    local mode    = storage.modulator_mode[id]  or "upstep"
-    local steps   = storage.modulator_steps[id] or 1
-    local key     = signals_key(signals, mode .. steps)
+    local mode    = storage.modulator_mode[id]    or "upstep"
+    local steps   = storage.modulator_steps[id]   or 1
+    local quality = storage.modulator_quality[id] or "normal"
+    local key     = signals_key(signals, mode .. steps .. quality)
     if key == storage.entity_keys[id] then return end
     storage.entity_keys[id] = key
 
@@ -365,6 +388,8 @@ local function update_modulator(entity)
         section.filters = build_upstep_clamp_filters(signals, steps)
     elseif mode == "multiplex" then
         section.filters = build_multiplex_filters(signals)
+    elseif mode == "set" then
+        section.filters = build_set_quality_filters(signals, quality)
     else
         section.filters = build_remove_filters(signals)
     end
@@ -398,6 +423,7 @@ local function on_modulator_removed(event)
     storage.modulator_outputs[entity.unit_number] = nil
     storage.modulator_mode[entity.unit_number]    = nil
     storage.modulator_steps[entity.unit_number]   = nil
+    storage.modulator_quality[entity.unit_number] = nil
     storage.entity_keys[entity.unit_number]       = nil
 
     for _, player in pairs(game.players) do
@@ -1133,29 +1159,32 @@ end
 
 -- ── Platform Request Driver ───────────────────────────────────────────────────
 
-local function get_or_create_section(lp, unit_number)
-    local group = SECTION_PREFIX .. unit_number
+local function get_or_create_section(lp)
     local i = 1
     while true do
         local s = lp.get_section(i)
         if not s then break end
-        if s.group == group then return s end
-        i = i + 1
+        if s.group == SECTION_GROUP then return s end
+        -- Migrate legacy numbered section: remove it (filters rewritten next tick)
+        if s.group:sub(1, #SECTION_PREFIX) == SECTION_PREFIX then
+            lp.remove_section(i)
+        else
+            i = i + 1
+        end
     end
-    return lp.add_section(group)
+    return lp.add_section(SECTION_GROUP)
 end
 
-local function remove_section(lp, unit_number)
-    local group = SECTION_PREFIX .. unit_number
+local function remove_section(lp)
     local i = 1
     while true do
         local s = lp.get_section(i)
         if not s then break end
-        if s.group == group then
+        if s.group == SECTION_GROUP or s.group:sub(1, #SECTION_PREFIX) == SECTION_PREFIX then
             lp.remove_section(i)
-            return
+        else
+            i = i + 1
         end
-        i = i + 1
     end
 end
 
@@ -1177,7 +1206,7 @@ local function set_platform_interrupt(platform, old_planet, new_planet)
         table.insert(records, 1, {
             station         = new_planet,
             temporary       = true,
-            wait_conditions = {{type = "time", compare_type = "and", ticks = 3600}},
+            wait_conditions = {{type = "time", compare_type = "and", ticks = 1800}},
         })
     end
 
@@ -1193,7 +1222,7 @@ local function update_console(entity)
     local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
     if not lp then return end
 
-    local section = get_or_create_section(lp, entity.unit_number)
+    local section = get_or_create_section(lp)
     if not section then return end
 
     local signals = entity.get_signals(
@@ -1261,6 +1290,19 @@ local function on_console_built(event)
         return
     end
 
+    local existing = entity.surface.find_entities_filtered({name = DRIVER_NAME, limit = 2})
+    if #existing > 1 then
+        local player = event.player_index and game.players[event.player_index]
+        if player then
+            player.insert({name = DRIVER_NAME, count = 1})
+            player.print({"", "Only one Platform Request Driver is allowed per platform."})
+        else
+            entity.surface.spill_item_stack(entity.position, {name = DRIVER_NAME, count = 1}, true)
+        end
+        entity.destroy()
+        return
+    end
+
     storage.consoles[entity.unit_number] = entity
 end
 
@@ -1282,7 +1324,7 @@ local function on_console_removed(event)
     local hub = platform.hub
     if not (hub and hub.valid) then return end
     local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
-    if lp then remove_section(lp, entity.unit_number) end
+    if lp then remove_section(lp) end
 end
 
 -- ── Surface rescan ───────────────────────────────────────────────────────────
@@ -1348,6 +1390,7 @@ script.on_init(function()
     storage.modulator_outputs       = {}
     storage.modulator_mode          = {}
     storage.modulator_steps         = {}
+    storage.modulator_quality       = {}
     storage.modulator_player_entity = {}
     storage.storage_readers         = {}
     storage.storage_reader_outputs  = {}
@@ -1387,6 +1430,7 @@ script.on_configuration_changed(function()
     storage.modulator_outputs       = storage.modulator_outputs       or {}
     storage.modulator_mode          = storage.modulator_mode          or {}
     storage.modulator_steps         = storage.modulator_steps         or {}
+    storage.modulator_quality       = storage.modulator_quality       or {}
     storage.modulator_player_entity = storage.modulator_player_entity or {}
     storage.storage_readers         = storage.storage_readers         or {}
     storage.storage_reader_outputs  = storage.storage_reader_outputs  or {}
@@ -1438,7 +1482,7 @@ local function get_entity_state(entity)
     local id   = entity.unit_number
     local name = entity.name
     if name == MODULATOR_NAME then
-        return {mode = storage.modulator_mode[id], steps = storage.modulator_steps[id]}
+        return {mode = storage.modulator_mode[id], steps = storage.modulator_steps[id], quality = storage.modulator_quality[id]}
     elseif name == READER_NAME then
         return {reader_mode = storage.reader_mode[id]}
     elseif name == TYPE_GATE_NAME then
@@ -1455,8 +1499,9 @@ local function restore_entity_state(entity, info)
     local id   = entity.unit_number
     local name = entity.name
     if name == MODULATOR_NAME then
-        if info.mode  then storage.modulator_mode[id]  = info.mode  end
-        if info.steps then storage.modulator_steps[id] = info.steps end
+        if info.mode    then storage.modulator_mode[id]    = info.mode    end
+        if info.steps   then storage.modulator_steps[id]   = info.steps   end
+        if info.quality then storage.modulator_quality[id] = info.quality end
     elseif name == READER_NAME then
         if info.reader_mode then storage.reader_mode[id] = info.reader_mode end
     elseif name == TYPE_GATE_NAME then
@@ -1520,6 +1565,11 @@ local function on_built(event)
     on_type_gate_built(event)
     on_subtype_gate_built(event)
     on_subtype_spreader_built(event)
+    -- Blueprint placement: individual handlers set defaults above; overwrite with saved tags.
+    local built_entity = event.entity or event.created_entity
+    if event.tags and built_entity and built_entity.valid then
+        restore_entity_state(built_entity, event.tags)
+    end
 end
 
 local function on_removed(event)
@@ -1556,6 +1606,33 @@ script.on_event(defines.events.on_robot_mined_entity,   on_removed, PLH_ENTITY_F
 script.on_event(defines.events.on_entity_died,          on_removed, PLH_ENTITY_FILTERS)
 script.on_event(defines.events.script_raised_destroy,   on_removed)
 
+script.on_event(defines.events.on_player_setup_blueprint, function(event)
+    if not event.mapping.valid then return end
+    local map = event.mapping.get()   -- table<entity_number, LuaEntity>
+
+    local player = game.players[event.player_index]
+    local bp = player.blueprint_to_setup
+    if not (bp and bp.valid_for_read) then
+        local cs = player.cursor_stack
+        if cs and cs.valid_for_read and cs.is_blueprint then bp = cs end
+    end
+    if not (bp and bp.valid_for_read) then return end
+
+    local entities = bp.get_blueprint_entities()
+    if not entities then return end
+
+    for _, bp_entity in pairs(entities) do
+        local id     = bp_entity.entity_number
+        local entity = map[id]
+        if entity and entity.valid then
+            local state = get_entity_state(entity)
+            if next(state) then
+                bp.set_blueprint_entity_tags(id, state)
+            end
+        end
+    end
+end)
+
 script.on_nth_tick(60, function()
     for id, entity in pairs(storage.consoles) do
         if entity and entity.valid then
@@ -1567,8 +1644,9 @@ script.on_nth_tick(60, function()
 end)
 
 script.on_nth_tick(6, function()
-    -- Guard: entity_keys may be absent in saves from before this table was added.
-    if not storage.entity_keys then storage.entity_keys = {} end
+    -- Guard: tables may be absent in saves from before they were added.
+    if not storage.entity_keys       then storage.entity_keys       = {} end
+    if not storage.modulator_quality then storage.modulator_quality = {} end
     for id, entity in pairs(storage.detectors) do
         if entity and entity.valid then update_detector(entity)
         else storage.detectors[id] = nil; storage.detector_outputs[id] = nil end

@@ -7,12 +7,16 @@ local READER_FRAME         = "plh-reader-frame"
 local READER_CLOSE_BTN     = "plh-reader-close"
 local READER_MODE_DROPDOWN = "plh-reader-mode-dropdown"
 
-local MODULATOR_NAME           = "plh-quality-modulator"
-local MODULATOR_FRAME          = "plh-modulator-frame"
-local MODULATOR_CLOSE_BTN      = "plh-modulator-close"
-local MODULATOR_DROPDOWN       = "plh-modulator-mode-dropdown"
-local MODULATOR_STEPS_DROPDOWN = "plh-modulator-steps-dropdown"
-local MODULATOR_STEPS_ROW      = "plh-modulator-steps-row"
+local MODULATOR_NAME             = "plh-quality-modulator"
+local MODULATOR_FRAME            = "plh-modulator-frame"
+local MODULATOR_CLOSE_BTN        = "plh-modulator-close"
+local MODULATOR_DROPDOWN         = "plh-modulator-mode-dropdown"
+local MODULATOR_STEPS_DROPDOWN   = "plh-modulator-steps-dropdown"
+local MODULATOR_STEPS_ROW        = "plh-modulator-steps-row"
+local MODULATOR_QUALITY_DROPDOWN = "plh-modulator-quality-dropdown"
+local MODULATOR_QUALITY_ROW      = "plh-modulator-quality-row"
+
+local QUALITY_NAMES = {"normal", "uncommon", "rare", "epic", "legendary"}
 
 local TYPE_GATE_NAME          = "plh-type-gate"
 local TYPE_GATE_FRAME         = "plh-type-gate-frame"
@@ -134,12 +138,15 @@ function Gui.create_modulator(player, entity)
     frame.auto_center = true
     make_titlebar(frame, {"entity-name.plh-quality-modulator"}, MODULATOR_CLOSE_BTN)
 
-    local mode  = storage.modulator_mode[entity.unit_number]  or "upstep"
-    local steps = storage.modulator_steps[entity.unit_number] or 1
-    local mode_index = mode == "upstep" and 1 or mode == "upstep-clamp" and 2
-                    or mode == "remove" and 3 or 4
+    local mode    = storage.modulator_mode[entity.unit_number]    or "upstep"
+    local steps   = storage.modulator_steps[entity.unit_number]   or 1
+    local quality = storage.modulator_quality[entity.unit_number] or "normal"
+    local mode_index = mode == "upstep-clamp" and 2 or mode == "remove" and 3
+                    or mode == "multiplex" and 4 or mode == "set" and 5 or 1
     local steps_idx = 5  -- default: steps=1 is at index 5
     for i, v in ipairs(STEPS_VALUES) do if v == steps then steps_idx = i break end end
+    local quality_idx = 1
+    for i, q in ipairs(QUALITY_NAMES) do if q == quality then quality_idx = i break end end
 
     local row = frame.add{type = "flow", direction = "horizontal"}
     row.style.vertical_align = "center"
@@ -147,7 +154,7 @@ function Gui.create_modulator(player, entity)
     row.add{
         type           = "drop-down",
         name           = MODULATOR_DROPDOWN,
-        items          = {{"plh-gui.upstep"}, {"plh-gui.upstep-clamp"}, {"plh-gui.remove"}, {"plh-gui.multiplex"}},
+        items          = {{"plh-gui.upstep"}, {"plh-gui.upstep-clamp"}, {"plh-gui.remove"}, {"plh-gui.multiplex"}, {"plh-gui.set-quality"}},
         selected_index = mode_index,
     }
 
@@ -160,6 +167,23 @@ function Gui.create_modulator(player, entity)
         items          = {"-4", "-3", "-2", "-1", "1", "2", "3", "4"},
         selected_index = steps_idx,
         enabled        = mode == "upstep" or mode == "upstep-clamp",
+    }
+
+    local quality_row = frame.add{type = "flow", name = MODULATOR_QUALITY_ROW, direction = "horizontal"}
+    quality_row.style.vertical_align = "center"
+    quality_row.add{type = "label", caption = {"plh-gui.quality"}}
+    quality_row.add{
+        type           = "drop-down",
+        name           = MODULATOR_QUALITY_DROPDOWN,
+        items          = {
+            {"quality-name.normal"},
+            {"quality-name.uncommon"},
+            {"quality-name.rare"},
+            {"quality-name.epic"},
+            {"quality-name.legendary"},
+        },
+        selected_index = quality_idx,
+        enabled        = mode == "set",
     }
 
     player.opened = frame
@@ -399,13 +423,15 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
         local idx = event.element.selected_index
         storage.reader_mode[unit_number] = idx == 2 and "all-producers" or idx == 3 and "best-producer"
                                         or idx == 4 and "ingredients" or "producer"
-    elseif event.element.name == MODULATOR_DROPDOWN or event.element.name == MODULATOR_STEPS_DROPDOWN then
+    elseif event.element.name == MODULATOR_DROPDOWN
+        or event.element.name == MODULATOR_STEPS_DROPDOWN
+        or event.element.name == MODULATOR_QUALITY_DROPDOWN then
         local unit_number = storage.modulator_player_entity[player.index]
         if not unit_number then return end
         if event.element.name == MODULATOR_DROPDOWN then
             local idx = event.element.selected_index
-            local new_mode = idx == 1 and "upstep" or idx == 2 and "upstep-clamp"
-                          or idx == 3 and "remove" or "multiplex"
+            local new_mode = idx == 2 and "upstep-clamp" or idx == 3 and "remove"
+                          or idx == 4 and "multiplex"    or idx == 5 and "set" or "upstep"
             storage.modulator_mode[unit_number] = new_mode
             local frame = player.gui.screen[MODULATOR_FRAME]
             if frame and frame.valid then
@@ -416,9 +442,18 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
                         steps_dd.enabled = new_mode == "upstep" or new_mode == "upstep-clamp"
                     end
                 end
+                local quality_row = frame[MODULATOR_QUALITY_ROW]
+                if quality_row and quality_row.valid then
+                    local quality_dd = quality_row[MODULATOR_QUALITY_DROPDOWN]
+                    if quality_dd and quality_dd.valid then
+                        quality_dd.enabled = new_mode == "set"
+                    end
+                end
             end
         elseif event.element.name == MODULATOR_STEPS_DROPDOWN then
             storage.modulator_steps[unit_number] = STEPS_VALUES[event.element.selected_index]
+        elseif event.element.name == MODULATOR_QUALITY_DROPDOWN then
+            storage.modulator_quality[unit_number] = QUALITY_NAMES[event.element.selected_index]
         end
     elseif event.element.name == TYPE_GATE_DROPDOWN or event.element.name == TYPE_GATE_MODE_DROPDOWN then
         local unit_number = storage.type_gate_player_entity[player.index]

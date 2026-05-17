@@ -36,6 +36,9 @@ Key functions in control.lua:
 2. **Always use entity name filters** on built/removed events (`PLH_ENTITY_FILTERS` table). Without them, callbacks fire for every entity in the game.
 3. **Item signal type is `nil`** (not `"item"`) when returned from `get_signals()` in Factorio 2.0.
 4. **Storage reader** only sees entities with a direct wire to its input port — not full network members.
+5. **NEVER modify `storage` in `on_load`** — Factorio enforces a CRC check; any storage write crashes with a save/load stability error. Use `on_configuration_changed` or `on_init` instead.
+6. **Quality-type signals** require an explicit `quality = "normal"` on the filter value or they silently fail to propagate: `{type="quality", name="legendary", quality="normal"}`.
+7. **Stale `entity_keys` cache**: when filter-building logic changes, bump the version in `info.json` so `on_configuration_changed` fires and clears `entity_keys`. Without a version bump, existing entities won't re-run their logic.
 
 ## Signal Conventions
 
@@ -46,6 +49,17 @@ Key functions in control.lua:
 ## Planned
 
 - **Quality Setter**: outputs any input item at a fixed quality regardless of input quality
+
+## Reload Requirements — Always flag this after each change
+
+After every code change, tell the user which reload level is needed to test it:
+
+| Changed files | Reload needed |
+|---|---|
+| `control.lua`, `scripts/*.lua`, `locale/*.cfg` | **Main menu reload** — return to title screen and re-enter the save |
+| `data.lua`, `data-updates.lua`, `data-final-fixes.lua`, `info.json` | **Full quit** — exit the game entirely, relaunch, then load the save |
+
+If a single session touches both data-stage and control-stage files, the whole change requires a full quit.
 
 ## Session Tips
 
