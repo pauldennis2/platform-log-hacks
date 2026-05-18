@@ -1169,12 +1169,15 @@ end
 
 local function set_platform_interrupt(platform, old_planet, new_planet)
     local schedule = platform.schedule
-    if not schedule then return end
+    if not schedule then
+        if not new_planet then return end
+        schedule = {records = {}, current = 1}
+    end
     local records = schedule.records
 
     if old_planet then
         for i = #records, 1, -1 do
-            if records[i].interrupt and records[i].station == old_planet then
+            if records[i].station == old_planet then
                 table.remove(records, i)
                 break
             end
@@ -1204,11 +1207,6 @@ local function update_console(entity)
     local section = get_or_create_section(lp)
     if not section then return end
 
-    local signals = entity.get_signals(
-        defines.wire_connector_id.circuit_red,
-        defines.wire_connector_id.circuit_green
-    )
-
     local function clear()
         section.filters = {}
         local old = storage.plh_active_planet[entity.unit_number]
@@ -1218,20 +1216,35 @@ local function update_console(entity)
         end
     end
 
-    if not signals then clear() return end
+    if not entity.power_switch_state then clear() return end
 
-    local planet_name = nil
+    -- Red wire: item signals + source planet (where to pick items up from)
+    local source_planet = nil
     local new_filters = {}
-
-    for _, sig in pairs(signals) do
-        if sig.signal.type == "space-location" then
-            if not planet_name then planet_name = sig.signal.name end
-        elseif sig.signal.type == nil and sig.count > 0 then
-            table.insert(new_filters, sig)
+    local red_net = entity.get_circuit_network(defines.wire_connector_id.circuit_red)
+    if red_net then
+        for _, sig in pairs(red_net.signals or {}) do
+            if sig.signal.type == "space-location" and not source_planet then
+                source_planet = sig.signal.name
+            elseif sig.signal.type == nil and sig.count > 0 then
+                new_filters[#new_filters + 1] = sig
+            end
         end
     end
 
-    if not planet_name or not next(new_filters) then clear() return end
+    -- Green wire: destination planet (informational; platform returns there via normal schedule)
+    local dest_planet = nil
+    local green_net = entity.get_circuit_network(defines.wire_connector_id.circuit_green)
+    if green_net then
+        for _, sig in pairs(green_net.signals or {}) do
+            if sig.signal.type == "space-location" then
+                dest_planet = sig.signal.name
+                break
+            end
+        end
+    end
+
+    if not source_planet or not next(new_filters) then clear() return end
 
     local filters = {}
     for i, sig in ipairs(new_filters) do
@@ -1242,15 +1255,32 @@ local function update_console(entity)
                 quality = sig.signal.quality or "normal",
             },
             min         = sig.count,
-            import_from = planet_name,
+            import_from = source_planet,
         }
     end
     section.filters = filters
 
     local old_planet = storage.plh_active_planet[entity.unit_number]
-    if old_planet ~= planet_name then
-        storage.plh_active_planet[entity.unit_number] = planet_name
-        set_platform_interrupt(platform, old_planet, planet_name)
+    if old_planet ~= source_planet then
+        storage.plh_active_planet[entity.unit_number] = source_planet
+        set_platform_interrupt(platform, old_planet, source_planet)
+    end
+
+    if entity.power_switch_state then
+        local schedule = platform.schedule
+        local interrupt_present = false
+        if schedule then
+            for _, r in ipairs(schedule.records) do
+                if r.station == source_planet then
+                    interrupt_present = true
+                    break
+                end
+            end
+        end
+        game.print("[PRD] source=" .. source_planet
+            .. " dest=" .. tostring(dest_planet)
+            .. " items=" .. #new_filters
+            .. " interrupt=" .. tostring(interrupt_present))
     end
 end
 
@@ -1258,27 +1288,46 @@ local function on_console_built(event)
     local entity = event.entity or event.created_entity
     if not (entity and entity.valid and entity.name == DRIVER_NAME) then return end
 
-    if not entity.surface.platform then
+    local function reject(msg)
+        -- on_space_platform_built_entity doesn't carry player_index; fall back to surface scan
         local player = event.player_index and game.players[event.player_index]
-        if player then
-            player.insert({name = DRIVER_NAME, count = 1})
-        else
-            entity.surface.spill_item_stack(entity.position, {name = DRIVER_NAME, count = 1}, true)
+        if not player then
+            for _, p in pairs(game.players) do
+                if p.valid and p.surface == entity.surface then player = p; break end
+            end
         end
+        local platform = entity.surface.platform
+        if platform then
+            -- On a space platform, items come from the hub; return the item there
+            local hub = platform.hub
+            if hub and hub.valid then
+                hub.insert({name = DRIVER_NAME, count = 1})
+            end
+        elseif player then
+            -- On a normal surface, item came from the player's cursor
+            local cursor = player.cursor_stack
+            if cursor and not cursor.valid_for_read then
+                cursor.set_stack({name = DRIVER_NAME, count = 1})
+            elseif cursor and cursor.valid_for_read and cursor.name == DRIVER_NAME then
+                cursor.count = cursor.count + 1
+            else
+                player.insert({name = DRIVER_NAME, count = 1})
+            end
+        else
+            entity.surface.spill_item_stack({position = entity.position, stack = {name = DRIVER_NAME, count = 1}, enable_looted = true})
+        end
+        if player and msg then player.print(msg) end
         entity.destroy()
+    end
+
+    if not entity.surface.platform then
+        reject()
         return
     end
 
     local existing = entity.surface.find_entities_filtered({name = DRIVER_NAME, limit = 2})
     if #existing > 1 then
-        local player = event.player_index and game.players[event.player_index]
-        if player then
-            player.insert({name = DRIVER_NAME, count = 1})
-            player.print({"", "Only one Platform Request Driver is allowed per platform."})
-        else
-            entity.surface.spill_item_stack(entity.position, {name = DRIVER_NAME, count = 1}, true)
-        end
-        entity.destroy()
+        reject("Only one Platform Request Driver is allowed per platform.")
         return
     end
 
