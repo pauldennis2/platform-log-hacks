@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+- Remove: Mini Signal Receiver — use compaktcircuit iconnectors for cross-surface circuit bridging instead
+- Remove: aai-signal-transmission hard dependency (no longer required)
+
 ## 0.3.1
 - Fix: Quality Reader now outputs quality-type signals correctly (explicit quality="normal" field required)
 - Add: Quality Modulator "Set Quality" mode — outputs all input signals at a fixed quality tier

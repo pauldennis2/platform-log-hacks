@@ -1466,12 +1466,6 @@ script.on_configuration_changed(function()
             update_subtype_spreader(entity)
         end
     end
-    -- mini-signal-receiver is hidden pending AAI remote API support; destroy any placed instances
-    for _, surface in pairs(game.surfaces) do
-        for _, entity in ipairs(surface.find_entities_filtered({name = "plh-mini-signal-receiver"})) do
-            entity.destroy()
-        end
-    end
     register_compaktcircuit()
 end)
 
