@@ -52,7 +52,11 @@ A multimodal device. For each input item signal it reads your available recipes 
 
 #### Storage Reader
 
-Wire a chest or tank directly to this device's input side and it outputs `signal-A` = percentage of available space remaining (0 = full, 100 = empty). Useful for triggering logistics requests or halting production when storage is nearly full. Note: only sees entities with a direct wire to its input port, not other members of the same circuit network.
+Wire a chest or tank directly to this device's input side and it outputs `signal-A` = percentage of available space remaining (0 = full, 100 = empty). Useful for triggering logistics requests or halting production when storage is nearly full. Can also read available space on platform.
+
+**Notes**
+1. Only sees entities with a direct wire to its input port, not other members of the same circuit network.
+2. For containers the availability calculation is purely slot based - a slot with 1 iron bar is considered "full". 
 
 #### Signal Type Detector
 
@@ -63,6 +67,7 @@ Categorises all input item signals by their item group and outputs one virtual s
 ### Known Issues
 
 1. Output is not displayed on the specialized circuits, but it is there. Attach their "out" side to a pole if you need.
+2. Quality Reader (and the Quality Modulator's "Read Quality" mode) only reliably reads item signals. Other signal types (fluids, space-locations, asteroid chunks) may not be counted even if they carry a quality tier.
 
 ---
 

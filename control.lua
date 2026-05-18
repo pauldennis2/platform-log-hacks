@@ -168,10 +168,8 @@ end
 local function build_read_quality_filters(signals)
     local totals = {}
     for _, sig in ipairs(signals) do
-        if sig.signal.type == nil then
-            local q = sig.signal.quality or "normal"
-            totals[q] = (totals[q] or 0) + sig.count
-        end
+        local q = sig.signal.quality or "normal"
+        totals[q] = (totals[q] or 0) + sig.count
     end
     local filters = {}
     for quality, count in pairs(totals) do
@@ -335,10 +333,8 @@ local function update_quality_reader(entity)
 
     local totals = {}
     for _, sig in ipairs(signals) do
-        if sig.signal.type == nil then
-            local q = sig.signal.quality or "normal"
-            totals[q] = (totals[q] or 0) + sig.count
-        end
+        local q = sig.signal.quality or "normal"
+        totals[q] = (totals[q] or 0) + sig.count
     end
 
     local filters = {}

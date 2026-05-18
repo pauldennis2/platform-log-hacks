@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+- Fix: Quality Reader and Quality Modulator "Read Quality" mode now count all signal types by quality tier, not just items
+- Add: Quality Modulator "Read Quality" mode
+
 ## 0.3.2
 - Remove: Mini Signal Receiver — use compaktcircuit iconnectors for cross-surface circuit bridging instead
 - Remove: aai-signal-transmission hard dependency (no longer required)

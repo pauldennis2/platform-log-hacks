@@ -36,6 +36,12 @@ possibly need a 2nd mode for the PRD? What if someone just wants to drive the sh
 
 write docs - readme in particular
 
+icon todo:
+Add chest to storage reader icon
+Better ordering - gates together, type stuff together
+
+Graphics - maybe look at borrowing Earendel's console from SE for the PRD?
+
 register entity w aai or create our own version or....
 
 attempt to balance - 
