@@ -1167,31 +1167,47 @@ local function remove_section(lp)
     end
 end
 
-local function set_platform_interrupt(platform, old_planet, new_planet)
+local function set_platform_interrupt(platform, old_route, new_route)
     local schedule = platform.schedule
     if not schedule then
-        if not new_planet then return end
+        if not new_route then return end
         schedule = {records = {}, current = 1}
     end
     local records = schedule.records
 
-    if old_planet then
-        for i = #records, 1, -1 do
-            if records[i].station == old_planet then
-                table.remove(records, i)
-                break
+    if old_route then
+        for _, planet in ipairs({old_route.source, old_route.dest}) do
+            if planet then
+                for i = #records, 1, -1 do
+                    if records[i].station == planet then
+                        table.remove(records, i)
+                        break
+                    end
+                end
             end
         end
     end
 
-    if new_planet then
-        table.insert(records, 1, {
-            station         = new_planet,
-            temporary       = true,
-            wait_conditions = {{type = "time", compare_type = "and", ticks = 1800}},
-        })
+    if new_route then
+        -- Insert dest first so that after source is inserted at 1, order is source→dest
+        if new_route.dest then
+            table.insert(records, 1, {
+                station         = new_route.dest,
+                temporary       = true,
+                wait_conditions = {{type = "time", compare_type = "and", ticks = settings.global["plh-prd-wait-time"].value * 60}},
+            })
+        end
+        if new_route.source then
+            table.insert(records, 1, {
+                station         = new_route.source,
+                temporary       = true,
+                wait_conditions = {{type = "time", compare_type = "and", ticks = settings.global["plh-prd-wait-time"].value * 60}},
+            })
+        end
     end
 
+    if #records == 0 then return end
+    schedule.current = math.max(1, math.min(schedule.current or 1, #records))
     platform.schedule = schedule
 end
 
@@ -1260,28 +1276,16 @@ local function update_console(entity)
     end
     section.filters = filters
 
-    local old_planet = storage.plh_active_planet[entity.unit_number]
-    if old_planet ~= source_planet then
-        storage.plh_active_planet[entity.unit_number] = source_planet
-        set_platform_interrupt(platform, old_planet, source_planet)
+    local old_route = storage.plh_active_planet[entity.unit_number]
+    local new_route = {source = source_planet, dest = dest_planet}
+    local route_changed = not old_route
+        or old_route.source ~= source_planet
+        or old_route.dest ~= dest_planet
+    if route_changed then
+        storage.plh_active_planet[entity.unit_number] = new_route
+        set_platform_interrupt(platform, old_route, new_route)
     end
 
-    if entity.power_switch_state then
-        local schedule = platform.schedule
-        local interrupt_present = false
-        if schedule then
-            for _, r in ipairs(schedule.records) do
-                if r.station == source_planet then
-                    interrupt_present = true
-                    break
-                end
-            end
-        end
-        game.print("[PRD] source=" .. source_planet
-            .. " dest=" .. tostring(dest_planet)
-            .. " items=" .. #new_filters
-            .. " interrupt=" .. tostring(interrupt_present))
-    end
 end
 
 local function on_console_built(event)
@@ -1338,15 +1342,15 @@ local function on_console_removed(event)
     local entity = event.entity
     if not (entity and entity.name == DRIVER_NAME) then return end
 
-    local old_planet = storage.plh_active_planet[entity.unit_number]
+    local old_route = storage.plh_active_planet[entity.unit_number]
     storage.plh_active_planet[entity.unit_number] = nil
     storage.consoles[entity.unit_number] = nil
 
     local platform = entity.surface.platform
     if not platform then return end
 
-    if old_planet then
-        set_platform_interrupt(platform, old_planet, nil)
+    if old_route then
+        set_platform_interrupt(platform, old_route, nil)
     end
 
     local hub = platform.hub
@@ -1448,7 +1452,7 @@ end)
 
 script.on_configuration_changed(function()
     storage.consoles                = storage.consoles                or {}
-    storage.plh_active_planet       = storage.plh_active_planet       or {}
+    storage.plh_active_planet       = {}  -- reset; structure changed to {source, dest} route tables
     storage.detectors               = storage.detectors               or {}
     storage.detector_outputs        = storage.detector_outputs        or {}
 

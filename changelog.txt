@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.6
+- Add: PRD station wait time is now configurable in mod settings (default 30s, range 5–600s)
+
+## 0.3.5
+- Add: Platform Request Driver now has its own technology (plh-platform-logistics), requiring 200 each red/green/blue/white science and prerequisites space-platform + plh-speciality-combinators
+- Balance: PRD recipe updated to 20 processing units, 5 advanced circuits, 5 steel
+
+## 0.3.4
+- Fix: Platform Request Driver now also inserts destination planet (green wire) as a temporary schedule stop after the source stop
+- Fix: PRD schedule cleanup now correctly removes both source and destination stops on deactivation or removal
+- Fix: PRD no longer adds schedule entries while switched off or after removal
+
 ## 0.3.3
 - Fix: Quality Reader and Quality Modulator "Read Quality" mode now count all signal types by quality tier, not just items
 - Add: Quality Modulator "Read Quality" mode

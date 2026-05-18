@@ -206,11 +206,13 @@ data:extend({
         type = "recipe",
         name = "plh-platform-request-driver",
         ingredients = {
-            {type = "item", name = "electronic-circuit", amount = 1},
+            {type = "item", name = "processing-unit",   amount = 20},
+            {type = "item", name = "advanced-circuit",  amount = 5},
+            {type = "item", name = "steel-plate",       amount = 5},
         },
         results = {{type = "item", name = "plh-platform-request-driver", amount = 1}},
         enabled = false,
-        energy_required = 1,
+        energy_required = 10,
     },
     {
         type = "item",
@@ -327,6 +329,27 @@ data:extend({
 
 data:extend({{
     type          = "technology",
+    name          = "plh-platform-logistics",
+    icon          = "__base__/graphics/icons/power-switch.png",
+    icon_size     = 64,
+    prerequisites = {"space-platform-thruster"},
+    unit = {
+        count       = 200,
+        ingredients = {
+            {"automation-science-pack", 1},
+            {"logistic-science-pack",   1},
+            {"chemical-science-pack",   1},
+            {"space-science-pack",      1},
+        },
+        time = 60,
+    },
+    effects = {
+        {type = "unlock-recipe", recipe = "plh-platform-request-driver"},
+    },
+}})
+
+data:extend({{
+    type          = "technology",
     name          = "plh-speciality-combinators",
     icon          = "__base__/graphics/icons/arithmetic-combinator.png",
     icon_size     = 64,
@@ -341,7 +364,6 @@ data:extend({{
         time = 30,
     },
     effects = {
-        {type = "unlock-recipe", recipe = "plh-platform-request-driver"},
         {type = "unlock-recipe", recipe = "plh-type-detector"},
         {type = "unlock-recipe", recipe = "plh-quality-modulator"},
         {type = "unlock-recipe", recipe = "plh-storage-reader"},
