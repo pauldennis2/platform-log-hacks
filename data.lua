@@ -26,8 +26,9 @@ local function hide_companion(e)
 end
 
 -- Entity tint profiles (applied to layer[1] of each directional sprite)
-local PLH_TINT_STANDARD = {r = 0.9,  g = 0.8,  b = 0.6,  a = 1.0}  -- warm amber, distinct from vanilla blue
-local PLH_TINT_GATE     = {r = 0.35, g = 0.35, b = 0.35, a = 1.0}  -- dark grey for gate devices
+local PLH_TINT_STANDARD  = {r = 0.9,  g = 0.8,  b = 0.6,  a = 1.0}  -- warm amber, distinct from vanilla blue
+local PLH_TINT_GATE      = {r = 0.35, g = 0.35, b = 0.35, a = 1.0}  -- dark grey for gate devices
+local PLH_TINT_SPREADER  = {r = 0.55, g = 0.30, b = 0.75, a = 1.0}  -- dark purple for spreader
 
 local function apply_tint(entity, tint)
     for _, dir in pairs({"north", "east", "south", "west"}) do
@@ -39,6 +40,9 @@ end
 local detector = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 detector.name = "plh-type-detector"
 detector.minable = {mining_time = 0.1, result = "plh-type-detector"}
+detector.icon = "__platform-log-hacks__/graphics/icons/type-reader.png"
+detector.icon_size = 64
+detector.icon_mipmaps = 0
 apply_tint(detector, PLH_TINT_STANDARD)
 
 local detector_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
@@ -63,7 +67,7 @@ console.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
 local modulator = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 modulator.name = "plh-quality-modulator"
 modulator.minable = {mining_time = 0.1, result = "plh-quality-modulator"}
-modulator.icon = "__platform-log-hacks__/graphics/entity/quality-modulator.png"
+modulator.icon = "__platform-log-hacks__/graphics/icons/quality-modulator.png"
 modulator.icon_size = 64
 modulator.icon_mipmaps = 0
 apply_tint(modulator, PLH_TINT_STANDARD)
@@ -81,6 +85,9 @@ hide_companion(modulator_out)
 local storage_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 storage_reader.name = "plh-storage-reader"
 storage_reader.minable = {mining_time = 0.1, result = "plh-storage-reader"}
+storage_reader.icon = "__platform-log-hacks__/graphics/icons/storage-reader.png"
+storage_reader.icon_size = 64
+storage_reader.icon_mipmaps = 0
 apply_tint(storage_reader, PLH_TINT_STANDARD)
 
 local storage_reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
@@ -97,7 +104,7 @@ hide_companion(storage_reader_out)
 local reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 reader.name = "plh-recipe-reader"
 reader.minable = {mining_time = 0.1, result = "plh-recipe-reader"}
-reader.icon = "__platform-log-hacks__/graphics/entity/recipe-reader.png"
+reader.icon = "__platform-log-hacks__/graphics/icons/recipe-reader.png"
 apply_tint(reader, PLH_TINT_STANDARD)
 reader.icon_size = 64
 reader.icon_mipmaps = 0
@@ -110,21 +117,6 @@ reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
 reader_out.collision_mask = {layers = {}}
 reader_out.selection_box = {{0, 0}, {0, 0}}
 hide_companion(reader_out)
-
--- Quality Reader: strips the item, outputs quality signals summed across all input items
-local quality_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
-quality_reader.name = "plh-quality-reader"
-quality_reader.minable = {mining_time = 0.1, result = "plh-quality-reader"}
-apply_tint(quality_reader, PLH_TINT_STANDARD)
-
-local quality_reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
-quality_reader_out.name = "plh-quality-reader-output"
-quality_reader_out.minable = nil
-quality_reader_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
-quality_reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
-quality_reader_out.collision_mask = {layers = {}}
-quality_reader_out.selection_box = {{0, 0}, {0, 0}}
-hide_companion(quality_reader_out)
 
 -- Type Gate: passes only item signals of the selected type category
 local type_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -161,6 +153,10 @@ hide_companion(subtype_gate_out)
 local subtype_spreader = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
 subtype_spreader.name = "plh-subtype-spreader"
 subtype_spreader.minable = {mining_time = 0.1, result = "plh-subtype-spreader"}
+subtype_spreader.icon = "__platform-log-hacks__/graphics/icons/subtype-spreader.png"
+subtype_spreader.icon_size = 64
+subtype_spreader.icon_mipmaps = 0
+apply_tint(subtype_spreader, PLH_TINT_SPREADER)
 
 data:extend({
     console,
@@ -168,8 +164,7 @@ data:extend({
     detector_out,
     modulator,
     modulator_out,
-    quality_reader,
-    quality_reader_out,
+
     storage_reader,
     storage_reader_out,
     reader,
@@ -182,7 +177,7 @@ data:extend({
     {
         type = "item",
         name = "plh-type-detector",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/icons/type-reader.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-type-detector]",
@@ -220,7 +215,7 @@ data:extend({
     {
         type = "item",
         name = "plh-quality-modulator",
-        icon = "__platform-log-hacks__/graphics/entity/quality-modulator.png",
+        icon = "__platform-log-hacks__/graphics/icons/quality-modulator.png",
         icon_size = 64,
         icon_mipmaps = 0,
         icon_mipmaps = 1,
@@ -239,26 +234,8 @@ data:extend({
     },
     {
         type = "item",
-        name = "plh-quality-reader",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
-        icon_size = 64,
-        subgroup = "circuit-network",
-        order = "c[combinators]-z[plh-quality-reader]",
-        stack_size = 10,
-        place_result = "plh-quality-reader",
-    },
-    {
-        type = "recipe",
-        name = "plh-quality-reader",
-        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
-        results = {{type = "item", name = "plh-quality-reader", amount = 1}},
-        enabled = false,
-        energy_required = 1,
-    },
-    {
-        type = "item",
         name = "plh-storage-reader",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/icons/storage-reader.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-storage-reader]",
@@ -276,7 +253,7 @@ data:extend({
     {
         type = "item",
         name = "plh-recipe-reader",
-        icon = "__platform-log-hacks__/graphics/entity/recipe-reader.png",
+        icon = "__platform-log-hacks__/graphics/icons/recipe-reader.png",
         icon_size = 64,
         icon_mipmaps = 0,
         subgroup = "circuit-network",
@@ -313,7 +290,7 @@ data:extend({
     {
         type = "item",
         name = "plh-subtype-spreader",
-        icon = "__base__/graphics/icons/constant-combinator.png",
+        icon = "__platform-log-hacks__/graphics/icons/subtype-spreader.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-subtype-spreader]",
@@ -347,3 +324,30 @@ data:extend({
         energy_required = 1,
     },
 })
+
+data:extend({{
+    type          = "technology",
+    name          = "plh-speciality-combinators",
+    icon          = "__base__/graphics/icons/arithmetic-combinator.png",
+    icon_size     = 64,
+    prerequisites = {"circuit-network"},
+    unit = {
+        count       = 100,
+        ingredients = {
+            {"automation-science-pack", 1},
+            {"logistic-science-pack",   1},
+            {"chemical-science-pack",   1},
+        },
+        time = 30,
+    },
+    effects = {
+        {type = "unlock-recipe", recipe = "plh-platform-request-driver"},
+        {type = "unlock-recipe", recipe = "plh-type-detector"},
+        {type = "unlock-recipe", recipe = "plh-quality-modulator"},
+        {type = "unlock-recipe", recipe = "plh-storage-reader"},
+        {type = "unlock-recipe", recipe = "plh-recipe-reader"},
+        {type = "unlock-recipe", recipe = "plh-type-gate"},
+        {type = "unlock-recipe", recipe = "plh-subtype-gate"},
+        {type = "unlock-recipe", recipe = "plh-subtype-spreader"},
+    },
+}})

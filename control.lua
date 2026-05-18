@@ -212,7 +212,7 @@ local function get_item_subgroup(name)
     return sg
 end
 
--- Returns subgroup name for item and asteroid-chunk signals; nil for virtual/quality/etc.
+-- Returns subgroup name for item/asteroid-chunk/virtual/fluid signals; nil for others.
 local function get_material_subgroup(sig_type, sig_name)
     if sig_type == nil then
         return get_item_subgroup(sig_name)
@@ -220,13 +220,29 @@ local function get_material_subgroup(sig_type, sig_name)
         local key = "ac\0" .. sig_name
         local cached = item_subgroup_cache[key]
         if cached ~= nil then return cached end
-        local ac_protos = prototypes["asteroid-chunk"]
-        local proto = ac_protos and ac_protos[sig_name]
+        local ok, ac_protos = pcall(function() return prototypes["asteroid-chunk"] end)
+        local proto = ok and ac_protos and ac_protos[sig_name]
+        local sg = proto and proto.subgroup and proto.subgroup.name or ""
+        item_subgroup_cache[key] = sg
+        return sg
+    elseif sig_type == "virtual" then
+        local key = "vs\0" .. sig_name
+        local cached = item_subgroup_cache[key]
+        if cached ~= nil then return cached end
+        local proto = prototypes.virtual_signal[sig_name]
+        local sg = proto and proto.subgroup and proto.subgroup.name or ""
+        item_subgroup_cache[key] = sg
+        return sg
+    elseif sig_type == "fluid" then
+        local key = "fl\0" .. sig_name
+        local cached = item_subgroup_cache[key]
+        if cached ~= nil then return cached end
+        local proto = prototypes.fluid[sig_name]
         local sg = proto and proto.subgroup and proto.subgroup.name or ""
         item_subgroup_cache[key] = sg
         return sg
     end
-    return nil  -- virtual, space-location, quality, fluid — caller passes through
+    return nil  -- space-location, quality, research-progress — pass through unconditionally
 end
 
 local function categorize(name)
@@ -311,69 +327,6 @@ local function on_detector_removed(event)
     storage.detectors[entity.unit_number]        = nil
     storage.detector_outputs[entity.unit_number] = nil
     storage.entity_keys[entity.unit_number]      = nil
-end
-
--- ── Quality Reader ────────────────────────────────────────────────────────────
-
-local QUALITY_READER_NAME   = "plh-quality-reader"
-local QUALITY_READER_OUTPUT = "plh-quality-reader-output"
-
-local function update_quality_reader(entity)
-    local id     = entity.unit_number
-    local output = storage.quality_reader_outputs[id]
-    if not (output and output.valid) then return end
-
-    local signals = read_input(entity)
-    local key     = signals_key(signals)
-    if key == storage.entity_keys[id] then return end
-    storage.entity_keys[id] = key
-
-    local section = get_output_section(output)
-    if not signals then section.filters = {} return end
-
-    local totals = {}
-    for _, sig in ipairs(signals) do
-        local q = sig.signal.quality or "normal"
-        totals[q] = (totals[q] or 0) + sig.count
-    end
-
-    local filters = {}
-    for quality, count in pairs(totals) do
-        filters[#filters + 1] = {
-            value = {type = "quality", name = quality, quality = "normal"},
-            min   = count,
-        }
-    end
-    section.filters = filters
-end
-
-local function on_quality_reader_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == QUALITY_READER_NAME) then return end
-
-    local output = entity.surface.create_entity({
-        name        = QUALITY_READER_OUTPUT,
-        position    = entity.position,
-        force       = entity.force,
-        raise_built = false,
-    })
-    if not output then return end
-
-    wire_companion(entity, output)
-    init_output(output)
-    storage.quality_readers[entity.unit_number]        = entity
-    storage.quality_reader_outputs[entity.unit_number] = output
-end
-
-local function on_quality_reader_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == QUALITY_READER_NAME) then return end
-
-    local output = storage.quality_reader_outputs[entity.unit_number]
-    if output and output.valid then output.destroy() end
-    storage.quality_readers[entity.unit_number]        = nil
-    storage.quality_reader_outputs[entity.unit_number] = nil
-    storage.entity_keys[entity.unit_number]            = nil
 end
 
 -- ── Quality Modulator ─────────────────────────────────────────────────────────
@@ -700,7 +653,7 @@ local function get_best_producer_cache()
         local etype = entity.type
         if etype == "assembling-machine" or etype == "furnace" or etype == "rocket-silo" then
             if prototypes.item[entity.name] then
-                local ok, speed = pcall(function() return entity.crafting_speed end)
+                local ok, speed = pcall(function() return entity.get_crafting_speed() end)
                 if ok and type(speed) == "number" then
                     for cat in pairs(entity.crafting_categories or {}) do
                         local cur = category_best[cat]
@@ -1093,12 +1046,22 @@ local function get_subgroup_items(subgroup)
             items[#items + 1] = {type = "item", name = name}
         end
     end
-    local ac_protos = prototypes["asteroid-chunk"]
-    if ac_protos then
+    local ok, ac_protos = pcall(function() return prototypes["asteroid-chunk"] end)
+    if ok and ac_protos then
         for name, proto in pairs(ac_protos) do
             if proto.subgroup and proto.subgroup.name == subgroup then
                 items[#items + 1] = {type = "asteroid-chunk", name = name}
             end
+        end
+    end
+    for name, proto in pairs(prototypes.virtual_signal) do
+        if proto.subgroup and proto.subgroup.name == subgroup then
+            items[#items + 1] = {type = "virtual", name = name}
+        end
+    end
+    for name, proto in pairs(prototypes.fluid) do
+        if proto.subgroup and proto.subgroup.name == subgroup then
+            items[#items + 1] = {type = "fluid", name = name}
         end
     end
     table.sort(items, function(a, b)
@@ -1351,7 +1314,7 @@ end
 local function rescan_surfaces()
     local specs = {
         {DETECTOR_NAME,       DETECTOR_OUTPUT,       storage.detectors,       storage.detector_outputs},
-        {QUALITY_READER_NAME, QUALITY_READER_OUTPUT, storage.quality_readers, storage.quality_reader_outputs},
+
         {MODULATOR_NAME,      MODULATOR_OUTPUT,      storage.modulators,      storage.modulator_outputs},
         {STORAGE_READER_NAME, STORAGE_READER_OUTPUT, storage.storage_readers, storage.storage_reader_outputs},
         {READER_NAME,         READER_OUTPUT,         storage.readers,         storage.reader_outputs},
@@ -1400,8 +1363,7 @@ script.on_init(function()
     storage.plh_active_planet       = {}
     storage.detectors               = {}
     storage.detector_outputs        = {}
-    storage.quality_readers         = {}
-    storage.quality_reader_outputs  = {}
+
     storage.modulators              = {}
     storage.modulator_outputs       = {}
     storage.modulator_mode          = {}
@@ -1440,8 +1402,7 @@ script.on_configuration_changed(function()
     storage.plh_active_planet       = storage.plh_active_planet       or {}
     storage.detectors               = storage.detectors               or {}
     storage.detector_outputs        = storage.detector_outputs        or {}
-    storage.quality_readers         = storage.quality_readers         or {}
-    storage.quality_reader_outputs  = storage.quality_reader_outputs  or {}
+
     storage.modulators              = storage.modulators              or {}
     storage.modulator_outputs       = storage.modulator_outputs       or {}
     storage.modulator_mode          = storage.modulator_mode          or {}
@@ -1554,7 +1515,7 @@ end
 register_compaktcircuit = function()
     if not script.active_mods["compaktcircuit"] then return end
     for _, name in ipairs({
-        DRIVER_NAME, DETECTOR_NAME, QUALITY_READER_NAME, MODULATOR_NAME,
+        DRIVER_NAME, DETECTOR_NAME, MODULATOR_NAME,
         STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
         SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
     }) do
@@ -1568,7 +1529,7 @@ end
 local function on_built(event)
     on_console_built(event)
     on_detector_built(event)
-    on_quality_reader_built(event)
+
     on_modulator_built(event)
     on_storage_reader_built(event)
     on_reader_built(event)
@@ -1585,7 +1546,7 @@ end
 local function on_removed(event)
     on_console_removed(event)
     on_detector_removed(event)
-    on_quality_reader_removed(event)
+
     on_modulator_removed(event)
     on_storage_reader_removed(event)
     on_reader_removed(event)
@@ -1598,7 +1559,7 @@ end
 -- entities not in this list, eliminating the biggest UPS leak in busy games.
 local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
-    DRIVER_NAME, DETECTOR_NAME, QUALITY_READER_NAME, MODULATOR_NAME,
+    DRIVER_NAME, DETECTOR_NAME, MODULATOR_NAME,
     STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME, SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
@@ -1661,10 +1622,7 @@ script.on_nth_tick(6, function()
         if entity and entity.valid then update_detector(entity)
         else storage.detectors[id] = nil; storage.detector_outputs[id] = nil end
     end
-    for id, entity in pairs(storage.quality_readers) do
-        if entity and entity.valid then update_quality_reader(entity)
-        else storage.quality_readers[id] = nil; storage.quality_reader_outputs[id] = nil end
-    end
+
     for id, entity in pairs(storage.modulators) do
         if entity and entity.valid then update_modulator(entity)
         else storage.modulators[id] = nil; storage.modulator_outputs[id] = nil end

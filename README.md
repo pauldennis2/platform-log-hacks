@@ -29,18 +29,6 @@ Filters signals by quality. Open to select a mode:
 - **Allow all but** — passes everything except the selected quality tier.
 - **Signal mode** — uses an incoming virtual signal to set the quality threshold dynamically.
 
-#### Quality Reader
-
-Strips item identity from input signals and outputs one quality-type signal per tier present, with the count summed across all items. If you have 50 rare iron plates and 30 rare copper plates, you get `rare = 80`. (Also available as a mode in the Quality Modulator.)
-
-#### Quality Multiplexer
-
-For each input item signal, outputs that item's total count at every quality tier simultaneously. Useful when downstream logic needs to see all quality tiers of an item at once rather than the specific quality coming in.
-
-#### Quality Up-stepper / Quality Remover
-
-Single-purpose fixed versions of the Modulator's upstep and remove modes. Useful when you want a dedicated device wired into a specific spot without a GUI to accidentally reconfigure.
-
 #### Recipe Reader
 
 A multimodal device. For each input item signal it reads your available recipes and outputs something useful:
@@ -60,7 +48,7 @@ Wire a chest or tank directly to this device's input side and it outputs `signal
 
 #### Signal Type Detector
 
-Categorises all input item signals by their item group and outputs one virtual signal per category with the total item count. Categories: Intermediate Products, Logistics, Production, Combat, Modules, Other. Useful for building dashboards or routing logic that needs to distinguish between item classes.
+Categorizes all input item signals by their item group and outputs one virtual signal per category with the total item count. Categories: Intermediate Products, Logistics, Production, Combat, Modules, Other. Useful for building dashboards or routing logic that needs to distinguish between item classes.
 
 ---
 
@@ -73,4 +61,4 @@ Categorises all input item signals by their item group and outputs one virtual s
 
 ### Mod Integrations
 
-**Compakt Circuits** — All PLH devices can be packed into Compakt Circuits processor blocks. State (mode, steps, quality selection, etc.) is preserved through pack/unpack and blueprints. Additionally, Compakt Circuits' iconnector entity supports named cross-surface channels — place one iconnector on Nauvis and another on your space platform with the same channel name, wire each to your local circuit network, and signals flow freely between surfaces. This is the recommended approach for platform-to-ground circuit communication.
+**Compakt Circuits** — All PLH devices can be packed into Compakt Circuits processor blocks. State (mode, steps, quality selection, etc.) is preserved through pack/unpack and blueprints. Additionally, Compakt Circuits' iconnector entity supports named cross-surface channels — place one iconnector on Nauvis and another on your space platform with the same channel name, wire each to your local circuit network, and signals flow freely between surfaces. This is the easier approach for platform-to-ground circuit communication. It's also very possible to use AAI Signal Transmission if you want something a bit more balanced. These are both great mods.

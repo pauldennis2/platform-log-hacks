@@ -49,16 +49,37 @@ local SUBTYPE_LIST                = "plh-subtype-gate-list"
 local GATE_MODES = {"allow", "exclude", "signal"}
 local TYPE_NAMES = {"intermediate", "logistics", "production", "combat", "module", "other"}
 
-local function filter_subgroups(query)
-    local names = {}
-    for name in pairs(prototypes.item_subgroup) do
-        names[#names + 1] = name
+local populated_subgroups = nil
+
+local function compute_populated_subgroups()
+    local seen = {}
+    for _, proto in pairs(prototypes.item) do
+        if proto.subgroup then seen[proto.subgroup.name] = true end
     end
-    table.sort(names)
-    if query == "" then return names end
+    local ok, ac_protos = pcall(function() return prototypes["asteroid-chunk"] end)
+    if ok and ac_protos then
+        for _, proto in pairs(ac_protos) do
+            if proto.subgroup then seen[proto.subgroup.name] = true end
+        end
+    end
+    for _, proto in pairs(prototypes.virtual_signal) do
+        if proto.subgroup then seen[proto.subgroup.name] = true end
+    end
+    for _, proto in pairs(prototypes.fluid) do
+        if proto.subgroup then seen[proto.subgroup.name] = true end
+    end
+    local result = {}
+    for name in pairs(seen) do result[#result + 1] = name end
+    table.sort(result)
+    populated_subgroups = result
+end
+
+local function filter_subgroups(query)
+    if not populated_subgroups then compute_populated_subgroups() end
+    if query == "" then return populated_subgroups end
     local q = query:lower()
     local result = {}
-    for _, name in ipairs(names) do
+    for _, name in ipairs(populated_subgroups) do
         if name:lower():find(q, 1, true) then
             result[#result + 1] = name
         end

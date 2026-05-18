@@ -22,7 +22,7 @@ Key functions in control.lua:
 | Quality Remover | quality-remover | Strips quality → normal |
 | Quality Modulator | quality-modulator | GUI: Upstep (Steps 1-4) or Remove |
 | Quality Gate | quality-gate | GUI: Allow-only / Allow-all-but / Signal mode |
-| Quality Reader | quality-reader | Strips item identity, outputs quality-type signals |
+
 | Quality Multiplexer | quality-multiplexer | Outputs each item's total at every quality tier |
 | Storage Reader | storage-reader | signal-A = % available space in directly-wired storage |
 | Recipe Reader | recipe-reader | Outputs producer building for each input item |

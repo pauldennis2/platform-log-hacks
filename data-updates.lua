@@ -1,12 +1,1 @@
-local circuit_tech = data.raw["technology"]["circuit-network"]
-if circuit_tech then
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-platform-request-driver"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-type-detector"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-modulator"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-quality-reader"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-storage-reader"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-recipe-reader"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-type-gate"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-subtype-gate"})
-    table.insert(circuit_tech.effects, {type = "unlock-recipe", recipe = "plh-subtype-spreader"})
-end
+-- Intentionally empty: recipe unlocks are handled by the plh-speciality-combinators technology in data.lua.
