@@ -29,10 +29,19 @@ end
 local PLH_TINT_STANDARD  = {r = 0.9,  g = 0.8,  b = 0.6,  a = 1.0}  -- warm amber, distinct from vanilla blue
 local PLH_TINT_GATE      = {r = 0.35, g = 0.35, b = 0.35, a = 1.0}  -- dark grey for gate devices
 local PLH_TINT_SPREADER  = {r = 0.55, g = 0.30, b = 0.75, a = 1.0}  -- dark purple for spreader
+local PLH_TINT_SILVER    = {r = 0.55, g = 0.70, b = 0.90, a = 1.0}  -- cool blue-grey, distinct from red/orange base
 
 local function apply_tint(entity, tint)
     for _, dir in pairs({"north", "east", "south", "west"}) do
         entity.sprites[dir].layers[1].tint = tint
+    end
+end
+
+local function apply_tint_all_layers(entity, tint)
+    for _, dir in pairs({"north", "east", "south", "west"}) do
+        for _, layer in ipairs(entity.sprites[dir].layers) do
+            layer.tint = tint
+        end
     end
 end
 
@@ -56,11 +65,30 @@ hide_companion(detector_out)
 
 
 local console = util.table.deepcopy(data.raw["power-switch"]["power-switch"])
-console.name = "plh-platform-request-driver"
-console.minable = {mining_time = 0.1, result = "plh-platform-request-driver"}
+console.name = "plh-platform-pilot"
+console.minable = {mining_time = 0.1, result = "plh-platform-pilot"}
 -- Zero out the copper wire distance so the entity can't actually switch power networks
 console.maximum_wire_distance = 0
 console.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
+
+-- Platform Request Driver: reads item signals + source planet, sets hub logistic requests
+local prd_entity = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+prd_entity.name = "plh-platform-request-driver"
+prd_entity.minable = {mining_time = 0.1, result = "plh-platform-request-driver"}
+prd_entity.icon = "__platform-log-hacks__/graphics/icons/platform-request-driver.png"
+prd_entity.icon_size = 64
+prd_entity.icon_mipmaps = 0
+prd_entity.surface_conditions = { { property = "pressure", min = 0, max = 0 } }
+-- Swap sprite filenames to the pre-brightened custom graphic; keep all other metadata from deepcopy
+local prd_sprite_path = "__platform-log-hacks__/graphics/entity/platform-request-driver.png"
+for _, dir in pairs({"north", "east", "south", "west"}) do
+    for _, layer in ipairs(prd_entity.sprites[dir].layers) do
+        if layer.filename then layer.filename = prd_sprite_path end
+        if layer.hr_version and layer.hr_version.filename then
+            layer.hr_version.filename = prd_sprite_path
+        end
+    end
+end
 
 
 -- Quality Modulator: mode-selectable upstep or remove via custom GUI
@@ -122,6 +150,9 @@ hide_companion(reader_out)
 local type_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 type_gate.name = "plh-type-gate"
 type_gate.minable = {mining_time = 0.1, result = "plh-type-gate"}
+type_gate.icon = "__platform-log-hacks__/graphics/icons/type-gate.png"
+type_gate.icon_size = 64
+type_gate.icon_mipmaps = 0
 apply_tint(type_gate, PLH_TINT_GATE)
 
 local type_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
@@ -137,6 +168,9 @@ hide_companion(type_gate_out)
 local subtype_gate = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
 subtype_gate.name = "plh-subtype-gate"
 subtype_gate.minable = {mining_time = 0.1, result = "plh-subtype-gate"}
+subtype_gate.icon = "__platform-log-hacks__/graphics/icons/subtype-gate.png"
+subtype_gate.icon_size = 64
+subtype_gate.icon_mipmaps = 0
 apply_tint(subtype_gate, PLH_TINT_GATE)
 
 local subtype_gate_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
@@ -174,6 +208,7 @@ data:extend({
     subtype_gate,
     subtype_gate_out,
     subtype_spreader,
+    prd_entity,
     {
         type = "item",
         name = "plh-type-detector",
@@ -194,8 +229,30 @@ data:extend({
     },
     {
         type = "item",
+        name = "plh-platform-pilot",
+        icon = "__platform-log-hacks__/graphics/icons/platform-pilot.png",
+        icon_size = 64,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-platform-pilot]",
+        stack_size = 10,
+        place_result = "plh-platform-pilot",
+    },
+    {
+        type = "recipe",
+        name = "plh-platform-pilot",
+        ingredients = {
+            {type = "item", name = "processing-unit",   amount = 20},
+            {type = "item", name = "advanced-circuit",  amount = 5},
+            {type = "item", name = "steel-plate",       amount = 5},
+        },
+        results = {{type = "item", name = "plh-platform-pilot", amount = 1}},
+        enabled = false,
+        energy_required = 10,
+    },
+    {
+        type = "item",
         name = "plh-platform-request-driver",
-        icon = "__base__/graphics/icons/power-switch.png",
+        icon = "__platform-log-hacks__/graphics/icons/platform-request-driver.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-platform-request-driver]",
@@ -206,9 +263,9 @@ data:extend({
         type = "recipe",
         name = "plh-platform-request-driver",
         ingredients = {
-            {type = "item", name = "processing-unit",   amount = 20},
+            {type = "item", name = "processing-unit",   amount = 10},
             {type = "item", name = "advanced-circuit",  amount = 5},
-            {type = "item", name = "steel-plate",       amount = 5},
+            {type = "item", name = "steel-plate",       amount = 3},
         },
         results = {{type = "item", name = "plh-platform-request-driver", amount = 1}},
         enabled = false,
@@ -274,7 +331,7 @@ data:extend({
     {
         type = "item",
         name = "plh-type-gate",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/icons/type-gate.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-type-gate]",
@@ -310,7 +367,7 @@ data:extend({
     {
         type = "item",
         name = "plh-subtype-gate",
-        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon = "__platform-log-hacks__/graphics/icons/subtype-gate.png",
         icon_size = 64,
         subgroup = "circuit-network",
         order = "c[combinators]-z[plh-subtype-gate]",
@@ -330,7 +387,7 @@ data:extend({
 data:extend({{
     type          = "technology",
     name          = "plh-platform-logistics",
-    icon          = "__base__/graphics/icons/power-switch.png",
+    icon          = "__platform-log-hacks__/graphics/icons/platform-pilot.png",
     icon_size     = 64,
     prerequisites = {"space-platform-thruster"},
     unit = {
@@ -344,6 +401,7 @@ data:extend({{
         time = 60,
     },
     effects = {
+        {type = "unlock-recipe", recipe = "plh-platform-pilot"},
         {type = "unlock-recipe", recipe = "plh-platform-request-driver"},
     },
 }})

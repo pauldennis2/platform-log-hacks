@@ -1,8 +1,10 @@
 local Gui = require("scripts.gui")
 
-local DRIVER_NAME    = "plh-platform-request-driver"
+local PILOT_NAME     = "plh-platform-pilot"
+local PRD_NAME       = "plh-platform-request-driver"
 local SECTION_PREFIX = "plh-driver-"   -- legacy: old sections had unit_number suffix
-local SECTION_GROUP  = "plh-driver"    -- current: fixed name, one per platform
+local SECTION_GROUP  = "plh-driver"    -- legacy: used for cleanup only
+local SECTION_PRD_PREFIX = "plh-prd-"  -- per-PRD sections keyed by unit_number
 
 -- ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -1167,64 +1169,79 @@ local function remove_section(lp)
     end
 end
 
-local function set_platform_interrupt(platform, old_route, new_route)
+local function get_or_create_prd_section(lp, unit_number)
+    local group = SECTION_PRD_PREFIX .. unit_number
+    local i = 1
+    while true do
+        local s = lp.get_section(i)
+        if not s then break end
+        if s.group == group then return s end
+        i = i + 1
+    end
+    return lp.add_section(group)
+end
+
+local function remove_prd_section(lp, unit_number)
+    local group = SECTION_PRD_PREFIX .. unit_number
+    local i = 1
+    while true do
+        local s = lp.get_section(i)
+        if not s then break end
+        if s.group == group then lp.remove_section(i); return end
+        i = i + 1
+    end
+end
+
+-- old_stops / new_stops are ordered lists of planet name strings
+local function set_platform_interrupt(platform, old_stops, new_stops)
     local schedule = platform.schedule
     if not schedule then
-        if not new_route then return end
+        if not new_stops then return end
         schedule = {records = {}, current = 1}
     end
     local records = schedule.records
 
-    if old_route then
-        for _, planet in ipairs({old_route.source, old_route.dest}) do
-            if planet then
-                for i = #records, 1, -1 do
-                    if records[i].station == planet then
-                        table.remove(records, i)
-                        break
-                    end
+    if old_stops then
+        for _, planet in ipairs(old_stops) do
+            for i = #records, 1, -1 do
+                if records[i].station == planet and records[i].temporary then
+                    table.remove(records, i)
+                    break
                 end
             end
         end
     end
 
-    if new_route then
-        -- Insert dest first so that after source is inserted at 1, order is source→dest
-        if new_route.dest then
+    if new_stops then
+        -- Insert in reverse order so final schedule order matches new_stops
+        for i = #new_stops, 1, -1 do
             table.insert(records, 1, {
-                station         = new_route.dest,
-                temporary       = true,
-                wait_conditions = {{type = "time", compare_type = "and", ticks = settings.global["plh-prd-wait-time"].value * 60}},
-            })
-        end
-        if new_route.source then
-            table.insert(records, 1, {
-                station         = new_route.source,
+                station         = new_stops[i],
                 temporary       = true,
                 wait_conditions = {{type = "time", compare_type = "and", ticks = settings.global["plh-prd-wait-time"].value * 60}},
             })
         end
     end
 
-    if #records == 0 then return end
+    if #records == 0 then platform.schedule = nil; return end
     schedule.current = math.max(1, math.min(schedule.current or 1, #records))
     platform.schedule = schedule
 end
 
-local function update_console(entity)
+local function routes_equal(a, b)
+    if not a or not b then return a == b end
+    if #a ~= #b then return false end
+    for i, v in ipairs(a) do
+        if v ~= b[i] then return false end
+    end
+    return true
+end
+
+local function update_pilot(entity)
     local platform = entity.surface.platform
     if not platform then return end
-    local hub = platform.hub
-    if not (hub and hub.valid) then return end
-
-    local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
-    if not lp then return end
-
-    local section = get_or_create_section(lp)
-    if not section then return end
 
     local function clear()
-        section.filters = {}
         local old = storage.plh_active_planet[entity.unit_number]
         if old then
             storage.plh_active_planet[entity.unit_number] = nil
@@ -1234,7 +1251,45 @@ local function update_console(entity)
 
     if not entity.power_switch_state then clear() return end
 
-    -- Red wire: item signals + source planet (where to pick items up from)
+    -- Both wires: collect space-location signals, dedup by planet (lower value wins), sort ascending
+    local seen = {}
+    local function collect(net)
+        if not net then return end
+        for _, sig in pairs(net.signals or {}) do
+            if sig.signal.type == "space-location" then
+                local n = sig.signal.name
+                if not seen[n] or sig.count < seen[n] then seen[n] = sig.count end
+            end
+        end
+    end
+    collect(entity.get_circuit_network(defines.wire_connector_id.circuit_red))
+    collect(entity.get_circuit_network(defines.wire_connector_id.circuit_green))
+    local raw = {}
+    for name, order in pairs(seen) do raw[#raw + 1] = {name = name, order = order} end
+
+    if #raw == 0 then clear() return end
+
+    table.sort(raw, function(a, b) return a.order < b.order end)
+    local new_route = {}
+    for _, s in ipairs(raw) do new_route[#new_route + 1] = s.name end
+
+    local old_route = storage.plh_active_planet[entity.unit_number]
+    if not routes_equal(old_route, new_route) then
+        storage.plh_active_planet[entity.unit_number] = new_route
+        set_platform_interrupt(platform, old_route, new_route)
+    end
+end
+
+local function update_prd(entity)
+    local platform = entity.surface.platform
+    if not platform then return end
+    local hub = platform.hub
+    if not (hub and hub.valid) then return end
+    local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
+    if not lp then return end
+    local section = get_or_create_prd_section(lp, entity.unit_number)
+    if not section then return end
+
     local source_planet = nil
     local new_filters = {}
     local red_net = entity.get_circuit_network(defines.wire_connector_id.circuit_red)
@@ -1248,19 +1303,10 @@ local function update_console(entity)
         end
     end
 
-    -- Green wire: destination planet (informational; platform returns there via normal schedule)
-    local dest_planet = nil
-    local green_net = entity.get_circuit_network(defines.wire_connector_id.circuit_green)
-    if green_net then
-        for _, sig in pairs(green_net.signals or {}) do
-            if sig.signal.type == "space-location" then
-                dest_planet = sig.signal.name
-                break
-            end
-        end
+    if not source_planet or not next(new_filters) then
+        section.filters = {}
+        return
     end
-
-    if not source_planet or not next(new_filters) then clear() return end
 
     local filters = {}
     for i, sig in ipairs(new_filters) do
@@ -1275,25 +1321,10 @@ local function update_console(entity)
         }
     end
     section.filters = filters
-
-    local old_route = storage.plh_active_planet[entity.unit_number]
-    local new_route = {source = source_planet, dest = dest_planet}
-    local route_changed = not old_route
-        or old_route.source ~= source_planet
-        or old_route.dest ~= dest_planet
-    if route_changed then
-        storage.plh_active_planet[entity.unit_number] = new_route
-        set_platform_interrupt(platform, old_route, new_route)
-    end
-
 end
 
-local function on_console_built(event)
-    local entity = event.entity or event.created_entity
-    if not (entity and entity.valid and entity.name == DRIVER_NAME) then return end
-
-    local function reject(msg)
-        -- on_space_platform_built_entity doesn't carry player_index; fall back to surface scan
+local function make_platform_reject(event, entity, item_name)
+    return function(msg)
         local player = event.player_index and game.players[event.player_index]
         if not player then
             for _, p in pairs(game.players) do
@@ -1302,61 +1333,64 @@ local function on_console_built(event)
         end
         local platform = entity.surface.platform
         if platform then
-            -- On a space platform, items come from the hub; return the item there
             local hub = platform.hub
-            if hub and hub.valid then
-                hub.insert({name = DRIVER_NAME, count = 1})
-            end
+            if hub and hub.valid then hub.insert({name = item_name, count = 1}) end
         elseif player then
-            -- On a normal surface, item came from the player's cursor
             local cursor = player.cursor_stack
             if cursor and not cursor.valid_for_read then
-                cursor.set_stack({name = DRIVER_NAME, count = 1})
-            elseif cursor and cursor.valid_for_read and cursor.name == DRIVER_NAME then
+                cursor.set_stack({name = item_name, count = 1})
+            elseif cursor and cursor.valid_for_read and cursor.name == item_name then
                 cursor.count = cursor.count + 1
             else
-                player.insert({name = DRIVER_NAME, count = 1})
+                player.insert({name = item_name, count = 1})
             end
         else
-            entity.surface.spill_item_stack({position = entity.position, stack = {name = DRIVER_NAME, count = 1}, enable_looted = true})
+            entity.surface.spill_item_stack({position = entity.position, stack = {name = item_name, count = 1}, enable_looted = true})
         end
         if player and msg then player.print(msg) end
         entity.destroy()
     end
-
-    if not entity.surface.platform then
-        reject()
-        return
-    end
-
-    local existing = entity.surface.find_entities_filtered({name = DRIVER_NAME, limit = 2})
-    if #existing > 1 then
-        reject("Only one Platform Request Driver is allowed per platform.")
-        return
-    end
-
-    storage.consoles[entity.unit_number] = entity
 end
 
-local function on_console_removed(event)
-    local entity = event.entity
-    if not (entity and entity.name == DRIVER_NAME) then return end
+local function on_pilot_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == PILOT_NAME) then return end
+    local reject = make_platform_reject(event, entity, PILOT_NAME)
+    if not entity.surface.platform then reject(); return end
+    local existing = entity.surface.find_entities_filtered({name = PILOT_NAME, limit = 2})
+    if #existing > 1 then reject("Only one Platform Pilot is allowed per platform."); return end
+    storage.pilots[entity.unit_number] = entity
+end
 
+local function on_pilot_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == PILOT_NAME) then return end
     local old_route = storage.plh_active_planet[entity.unit_number]
     storage.plh_active_planet[entity.unit_number] = nil
-    storage.consoles[entity.unit_number] = nil
-
+    storage.pilots[entity.unit_number] = nil
     local platform = entity.surface.platform
     if not platform then return end
+    if old_route then set_platform_interrupt(platform, old_route, nil) end
+end
 
-    if old_route then
-        set_platform_interrupt(platform, old_route, nil)
-    end
+local function on_prd_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == PRD_NAME) then return end
+    local reject = make_platform_reject(event, entity, PRD_NAME)
+    if not entity.surface.platform then reject(); return end
+    storage.prd_entities[entity.unit_number] = entity
+end
 
+local function on_prd_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == PRD_NAME) then return end
+    storage.prd_entities[entity.unit_number] = nil
+    local platform = entity.surface.platform
+    if not platform then return end
     local hub = platform.hub
     if not (hub and hub.valid) then return end
     local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
-    if lp then remove_section(lp) end
+    if lp then remove_prd_section(lp, entity.unit_number) end
 end
 
 -- ── Surface rescan ───────────────────────────────────────────────────────────
@@ -1412,7 +1446,8 @@ end
 local register_compaktcircuit  -- forward declaration; defined in the CC block below
 
 script.on_init(function()
-    storage.consoles                = {}
+    storage.pilots                  = {}
+    storage.prd_entities            = {}
     storage.plh_active_planet       = {}
     storage.detectors               = {}
     storage.detector_outputs        = {}
@@ -1451,8 +1486,9 @@ script.on_load(function()
 end)
 
 script.on_configuration_changed(function()
-    storage.consoles                = storage.consoles                or {}
-    storage.plh_active_planet       = {}  -- reset; structure changed to {source, dest} route tables
+    storage.pilots                  = storage.pilots                  or {}
+    storage.prd_entities            = storage.prd_entities            or {}
+    storage.plh_active_planet       = {}  -- reset on upgrade
     storage.detectors               = storage.detectors               or {}
     storage.detector_outputs        = storage.detector_outputs        or {}
 
@@ -1494,6 +1530,18 @@ script.on_configuration_changed(function()
         for _, entity in ipairs(surface.find_entities_filtered({name = SUBTYPE_SPREADER_NAME})) do
             storage.subtype_spreaders[entity.unit_number] = entity
             update_subtype_spreader(entity)
+        end
+        -- Re-register pilots and PRDs
+        for _, entity in ipairs(surface.find_entities_filtered({name = PILOT_NAME})) do
+            storage.pilots[entity.unit_number] = entity
+        end
+        for _, entity in ipairs(surface.find_entities_filtered({name = PRD_NAME})) do
+            storage.prd_entities[entity.unit_number] = entity
+        end
+        -- Remove legacy "plh-driver" hub sections (requests now handled by Platform Request Driver)
+        for _, hub in ipairs(surface.find_entities_filtered({name = "space-platform-hub"})) do
+            local lp = hub.get_logistic_point(defines.logistic_member_index.space_platform_hub_requester)
+            if lp then remove_section(lp) end
         end
     end
     register_compaktcircuit()
@@ -1568,7 +1616,7 @@ end
 register_compaktcircuit = function()
     if not script.active_mods["compaktcircuit"] then return end
     for _, name in ipairs({
-        DRIVER_NAME, DETECTOR_NAME, MODULATOR_NAME,
+        PILOT_NAME, PRD_NAME, DETECTOR_NAME, MODULATOR_NAME,
         STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
         SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
     }) do
@@ -1580,7 +1628,8 @@ register_compaktcircuit = function()
 end
 
 local function on_built(event)
-    on_console_built(event)
+    on_pilot_built(event)
+    on_prd_built(event)
     on_detector_built(event)
 
     on_modulator_built(event)
@@ -1597,7 +1646,8 @@ local function on_built(event)
 end
 
 local function on_removed(event)
-    on_console_removed(event)
+    on_pilot_removed(event)
+    on_prd_removed(event)
     on_detector_removed(event)
 
     on_modulator_removed(event)
@@ -1612,7 +1662,7 @@ end
 -- entities not in this list, eliminating the biggest UPS leak in busy games.
 local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
-    DRIVER_NAME, DETECTOR_NAME, MODULATOR_NAME,
+    PILOT_NAME, PRD_NAME, DETECTOR_NAME, MODULATOR_NAME,
     STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME, SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
@@ -1658,11 +1708,18 @@ script.on_event(defines.events.on_player_setup_blueprint, function(event)
 end)
 
 script.on_nth_tick(60, function()
-    for id, entity in pairs(storage.consoles) do
+    for id, entity in pairs(storage.pilots) do
         if entity and entity.valid then
-            update_console(entity)
+            update_pilot(entity)
         else
-            storage.consoles[id] = nil
+            storage.pilots[id] = nil
+        end
+    end
+    for id, entity in pairs(storage.prd_entities) do
+        if entity and entity.valid then
+            update_prd(entity)
+        else
+            storage.prd_entities[id] = nil
         end
     end
 end)

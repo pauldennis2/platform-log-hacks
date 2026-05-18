@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.2
+- Fix: Platform Request Driver tint now reduces red and boosts blue to give a silver-white appearance on the red-based constant combinator sprite
+- Change: Platform Pilot reads space-location signals from both wires (red and green), sorted by value ascending; if the same planet appears on both wires, the lower value is used
+
+## 0.4.1
+- Fix: Platform Request Driver now visually distinct from vanilla constant combinator (silver-grey tint applied to all sprite layers)
+- Change: Platform Pilot now reads all space-location signals from red wire only, sorted by value ascending; supports arbitrary multi-stop routes (e.g. Fulgora=1, Nauvis=2, Aquilo=3)
+
+## 0.4.0
+- Breaking: existing "Platform Request Driver" (power switch) renamed to "Platform Pilot" — handles routing only
+- Add: new "Platform Request Driver" (constant combinator, silver-white tint) — handles hub logistic requests; stack multiple for different source planets
+- Change: hub requests and platform routing are now independent devices under the plh-platform-logistics technology
+
 ## 0.3.6
 - Add: PRD station wait time is now configurable in mod settings (default 30s, range 5–600s)
 
