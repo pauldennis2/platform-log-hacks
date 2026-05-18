@@ -1290,6 +1290,12 @@ local function update_prd(entity)
     local section = get_or_create_prd_section(lp, entity.unit_number)
     if not section then return end
 
+    local enabled = storage.prd_enabled[entity.unit_number]
+    if enabled == false then
+        section.filters = {}
+        return
+    end
+
     local source_planet = nil
     local new_filters = {}
     local red_net = entity.get_circuit_network(defines.wire_connector_id.circuit_red)
@@ -1385,6 +1391,12 @@ local function on_prd_removed(event)
     local entity = event.entity
     if not (entity and entity.name == PRD_NAME) then return end
     storage.prd_entities[entity.unit_number] = nil
+    storage.prd_enabled[entity.unit_number]  = nil
+    for _, player in pairs(game.players) do
+        if storage.prd_player_entity[player.index] == entity.unit_number then
+            Gui.close_prd(player)
+        end
+    end
     local platform = entity.surface.platform
     if not platform then return end
     local hub = platform.hub
@@ -1448,6 +1460,8 @@ local register_compaktcircuit  -- forward declaration; defined in the CC block b
 script.on_init(function()
     storage.pilots                  = {}
     storage.prd_entities            = {}
+    storage.prd_enabled             = {}
+    storage.prd_player_entity       = {}
     storage.plh_active_planet       = {}
     storage.detectors               = {}
     storage.detector_outputs        = {}
@@ -1488,6 +1502,8 @@ end)
 script.on_configuration_changed(function()
     storage.pilots                  = storage.pilots                  or {}
     storage.prd_entities            = storage.prd_entities            or {}
+    storage.prd_enabled             = storage.prd_enabled             or {}
+    storage.prd_player_entity       = storage.prd_player_entity       or {}
     storage.plh_active_planet       = {}  -- reset on upgrade
     storage.detectors               = storage.detectors               or {}
     storage.detector_outputs        = storage.detector_outputs        or {}

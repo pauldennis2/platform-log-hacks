@@ -35,6 +35,11 @@ local SPREADER_SEARCH_ROW           = "plh-subtype-spreader-search-row"
 local SPREADER_SEARCH_FIELD         = "plh-subtype-spreader-search"
 local SPREADER_LIST                 = "plh-subtype-spreader-list"
 
+local PRD_NAME      = "plh-platform-request-driver"
+local PRD_FRAME     = "plh-prd-frame"
+local PRD_CLOSE     = "plh-prd-close"
+local PRD_TOGGLE    = "plh-prd-toggle"
+
 local SUBTYPE_GATE_NAME           = "plh-subtype-gate"
 local SUBTYPE_GATE_FRAME          = "plh-subtype-gate-frame"
 local SUBTYPE_GATE_CLOSE_BTN      = "plh-subtype-gate-close"
@@ -350,6 +355,88 @@ function Gui.create_subtype_gate(player, entity)
     storage.subtype_gate_player_entity[player.index] = entity.unit_number
 end
 
+function Gui.close_prd(player)
+    local frame = player.gui.screen[PRD_FRAME]
+    if frame and frame.valid then frame.destroy() end
+    player.opened = nil
+    storage.prd_player_entity[player.index] = nil
+end
+
+function Gui.create_prd(player, entity)
+    local existing = player.gui.screen[PRD_FRAME]
+    if existing then existing.destroy() end
+
+    local frame = player.gui.screen.add{type = "frame", name = PRD_FRAME, direction = "vertical"}
+    frame.auto_center = true
+    make_titlebar(frame, {"entity-name.plh-platform-request-driver"}, PRD_CLOSE)
+
+    -- On/off toggle
+    local toggle_row = frame.add{type = "flow", direction = "horizontal"}
+    toggle_row.style.vertical_align = "center"
+    toggle_row.add{type = "label", caption = {"plh-gui.prd-enabled"}}
+    local enabled = storage.prd_enabled[entity.unit_number]
+    if enabled == nil then enabled = true end
+    toggle_row.add{type = "checkbox", name = PRD_TOGGLE, state = enabled}
+
+    frame.add{type = "line", direction = "horizontal"}
+
+    -- Read red-wire signals (same logic as update_prd)
+    local source_planet = nil
+    local item_signals  = {}
+    local red_net = entity.get_circuit_network(defines.wire_connector_id.circuit_red)
+    if red_net then
+        for _, sig in pairs(red_net.signals or {}) do
+            if sig.signal.type == "space-location" and not source_planet then
+                source_planet = sig.signal.name
+            elseif sig.signal.type == nil and sig.count > 0 then
+                item_signals[#item_signals + 1] = sig
+            end
+        end
+    end
+
+    -- Planet row
+    local planet_row = frame.add{type = "flow", direction = "horizontal"}
+    planet_row.style.vertical_align = "center"
+    planet_row.add{type = "label", caption = {"plh-gui.prd-planet"}}
+    local planet_caption
+    if source_planet then
+        local proto = prototypes.space_location and prototypes.space_location[source_planet]
+        planet_caption = proto and proto.localised_name or source_planet
+    else
+        planet_caption = {"plh-gui.prd-no-planet"}
+    end
+    local planet_lbl = planet_row.add{type = "label", caption = planet_caption}
+    planet_lbl.style.font = "default-bold"
+
+    frame.add{type = "line", direction = "horizontal"}
+
+    -- Requests header
+    local req_row = frame.add{type = "flow", direction = "horizontal"}
+    req_row.add{type = "label", caption = {"plh-gui.prd-requests"}}
+    local count_lbl = req_row.add{type = "label", caption = " (" .. #item_signals .. ")"}
+    count_lbl.style.font_color = {r = 0.7, g = 0.7, b = 0.7}
+
+    if #item_signals == 0 then
+        local none_lbl = frame.add{type = "label", caption = {"plh-gui.prd-no-requests"}}
+        none_lbl.style.font_color = {r = 0.7, g = 0.7, b = 0.7}
+    else
+        local scroll = frame.add{type = "scroll-pane", direction = "vertical"}
+        scroll.style.maximal_height = 220
+        scroll.style.minimal_width  = 200
+        local tbl = scroll.add{type = "table", column_count = 1}
+        for _, sig in ipairs(item_signals) do
+            local quality = sig.signal.quality or "normal"
+            local icon = quality ~= "normal"
+                and "[item=" .. sig.signal.name .. ",quality=" .. quality .. "]"
+                or  "[item=" .. sig.signal.name .. "]"
+            tbl.add{type = "label", caption = icon .. " " .. sig.count}
+        end
+    end
+
+    player.opened = frame
+    storage.prd_player_entity[player.index] = entity.unit_number
+end
+
 script.on_event(defines.events.on_gui_opened, function(event)
     if not event.entity then return end
     local player = game.players[event.player_index]
@@ -368,6 +455,9 @@ script.on_event(defines.events.on_gui_opened, function(event)
     elseif event.entity.name == SUBTYPE_SPREADER_NAME then
         player.opened = nil
         Gui.create_subtype_spreader(player, event.entity)
+    elseif event.entity.name == PRD_NAME then
+        player.opened = nil
+        Gui.create_prd(player, event.entity)
     end
 end)
 
@@ -379,6 +469,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
         if event.entity.name == TYPE_GATE_NAME    then Gui.close_type_gate(player)    end
         if event.entity.name == SUBTYPE_GATE_NAME     then Gui.close_subtype_gate(player)     end
         if event.entity.name == SUBTYPE_SPREADER_NAME  then Gui.close_subtype_spreader(player)  end
+        if event.entity.name == PRD_NAME               then Gui.close_prd(player)               end
         return
     end
     if not event.element then return end
@@ -397,6 +488,9 @@ script.on_event(defines.events.on_gui_closed, function(event)
     elseif event.element.name == SUBTYPE_SPREADER_FRAME then
         if event.element.valid then event.element.destroy() end
         storage.subtype_spreader_player_entity[player.index] = nil
+    elseif event.element.name == PRD_FRAME then
+        if event.element.valid then event.element.destroy() end
+        storage.prd_player_entity[player.index] = nil
     end
 end)
 
@@ -413,6 +507,8 @@ script.on_event(defines.events.on_gui_click, function(event)
         Gui.close_subtype_gate(player)
     elseif event.element.name == SUBTYPE_SPREADER_CLOSE_BTN then
         Gui.close_subtype_spreader(player)
+    elseif event.element.name == PRD_CLOSE then
+        Gui.close_prd(player)
     end
 end)
 
@@ -433,6 +529,7 @@ script.on_event(defines.events.on_player_changed_position, function(event)
     check_proximity(storage.type_gate_player_entity[player.index],   storage.type_gates,   Gui.close_type_gate)
     check_proximity(storage.subtype_gate_player_entity[player.index],   storage.subtype_gates,    Gui.close_subtype_gate)
     check_proximity(storage.subtype_spreader_player_entity[player.index],storage.subtype_spreaders,Gui.close_subtype_spreader)
+    check_proximity(storage.prd_player_entity and storage.prd_player_entity[player.index], storage.prd_entities, Gui.close_prd)
 end)
 
 script.on_event(defines.events.on_gui_selection_state_changed, function(event)
@@ -557,6 +654,16 @@ script.on_event(defines.events.on_gui_text_changed, function(event)
             list.selected_index = 0
         end
     end
+end)
+
+script.on_event(defines.events.on_gui_checked_state_changed, function(event)
+    if not event.element or event.element.name ~= PRD_TOGGLE then return end
+    local player = game.players[event.player_index]
+    local unit_number = storage.prd_player_entity[player.index]
+    if not unit_number then return end
+    local entity = storage.prd_entities[unit_number]
+    if not (entity and entity.valid) then return end
+    storage.prd_enabled[entity.unit_number] = event.element.state
 end)
 
 return Gui
