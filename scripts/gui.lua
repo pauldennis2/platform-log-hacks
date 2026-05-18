@@ -142,7 +142,8 @@ function Gui.create_modulator(player, entity)
     local steps   = storage.modulator_steps[entity.unit_number]   or 1
     local quality = storage.modulator_quality[entity.unit_number] or "normal"
     local mode_index = mode == "upstep-clamp" and 2 or mode == "remove" and 3
-                    or mode == "multiplex" and 4 or mode == "set" and 5 or 1
+                    or mode == "multiplex" and 4 or mode == "set" and 5
+                    or mode == "read-quality" and 6 or 1
     local steps_idx = 5  -- default: steps=1 is at index 5
     for i, v in ipairs(STEPS_VALUES) do if v == steps then steps_idx = i break end end
     local quality_idx = 1
@@ -154,7 +155,7 @@ function Gui.create_modulator(player, entity)
     row.add{
         type           = "drop-down",
         name           = MODULATOR_DROPDOWN,
-        items          = {{"plh-gui.upstep"}, {"plh-gui.upstep-clamp"}, {"plh-gui.remove"}, {"plh-gui.multiplex"}, {"plh-gui.set-quality"}},
+        items          = {{"plh-gui.upstep"}, {"plh-gui.upstep-clamp"}, {"plh-gui.remove"}, {"plh-gui.multiplex"}, {"plh-gui.set-quality"}, {"plh-gui.read-quality"}},
         selected_index = mode_index,
     }
 
@@ -431,7 +432,8 @@ script.on_event(defines.events.on_gui_selection_state_changed, function(event)
         if event.element.name == MODULATOR_DROPDOWN then
             local idx = event.element.selected_index
             local new_mode = idx == 2 and "upstep-clamp" or idx == 3 and "remove"
-                          or idx == 4 and "multiplex"    or idx == 5 and "set" or "upstep"
+                          or idx == 4 and "multiplex"    or idx == 5 and "set"
+                          or idx == 6 and "read-quality" or "upstep"
             storage.modulator_mode[unit_number] = new_mode
             local frame = player.gui.screen[MODULATOR_FRAME]
             if frame and frame.valid then

@@ -1,0 +1,41 @@
+circuit ideas -
+quality gate, only let certain quality through
+let everything but through
+
+get recipe? Get products?
+
+break code out into multiple files/organize project
+
+go-ready: how many things could an assembler make, what's the most limiting ingredient
+
+shield reader
+
+turret targeting
+
+quality setter
+
+make custom circuits work in compakt
+
+Note on storage reader, it's per slot
+
+Cannot show actual output
+
+recipe reader refinements
+
+test quality stepper with liquids - no signal passed through
+
+and power graphic to PRD
+
+entity reader - attach to a chest, get that chest as the result
+mode: ready for spoilables? attach to an assembler, see how many of the thing it can craft if it had infinite spoilables
+example: how much promethium science could we make with what's in here.
+
+test subtype spreader and fix to subtype for asteroids
+
+possibly need a 2nd mode for the PRD? What if someone just wants to drive the ship, no item.
+
+write docs - readme in particular
+
+register entity w aai or create our own version or....
+
+attempt to balance - 

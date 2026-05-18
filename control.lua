@@ -165,6 +165,24 @@ local function build_multiplex_filters(signals)
     return filters
 end
 
+local function build_read_quality_filters(signals)
+    local totals = {}
+    for _, sig in ipairs(signals) do
+        if sig.signal.type == nil then
+            local q = sig.signal.quality or "normal"
+            totals[q] = (totals[q] or 0) + sig.count
+        end
+    end
+    local filters = {}
+    for quality, count in pairs(totals) do
+        filters[#filters + 1] = {
+            value = {type = "quality", name = quality, quality = "normal"},
+            min   = count,
+        }
+    end
+    return filters
+end
+
 -- ── Type Detector ─────────────────────────────────────────────────────────────
 
 local DETECTOR_NAME   = "plh-type-detector"
@@ -390,6 +408,8 @@ local function update_modulator(entity)
         section.filters = build_multiplex_filters(signals)
     elseif mode == "set" then
         section.filters = build_set_quality_filters(signals, quality)
+    elseif mode == "read-quality" then
+        section.filters = build_read_quality_filters(signals)
     else
         section.filters = build_remove_filters(signals)
     end
