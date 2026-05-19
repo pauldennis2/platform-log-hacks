@@ -50,6 +50,41 @@ Wire a chest or tank directly to this device's input side and it outputs `signal
 
 Categorizes all input item signals by their item group and outputs one virtual signal per category with the total item count. Categories: Intermediate Products, Logistics, Production, Combat, Modules, Other. Useful for building dashboards or routing logic that needs to distinguish between item classes.
 
+#### Spoilage Reader
+
+Wire a chest or other storage directly to this device's input side and it reports on the most-spoiled item present. Two modes, selectable by opening the device:
+
+- **Seconds remaining (S)** — outputs `signal-S` = seconds until the most-spoiled item expires. 0 means imminent.
+- **Percent spoiled (P)** — outputs `signal-P` = how spoiled the worst item is, as a percentage (80 = 80% of its lifetime consumed). The first time the device sees a fresh item of a given type it calibrates; readings become accurate after one full fresh-item observation per item type.
+
+No output if no spoilable items are present.
+
+---
+
+### Update Intervals — The Chef Recommends
+
+> **TODO (erronius):** Written by Claude — review, rewrite, or trim as you see fit.
+>
+> *— Claude Sonnet 4.6*
+
+Two settings control how often PLH devices update, found under Mod Settings → Map:
+
+**Circuit update interval** (default: 6 ticks, range: 1–60)
+Controls the Signal Type Detector, Quality Modulator, Quality Gate, Recipe Reader, Storage Reader, and all other circuit combinators.
+
+- **6 ticks** (default) — updates ~10× per second. Responsive enough that you'll never notice the delay. Good starting point for any base size.
+- **15 ticks** — updates ~4× per second. Imperceptible for most automation logic. Recommended if you have 20+ circuit devices and are noticing UPS impact.
+- **30–60 ticks** — once every half-second to full second. Fine for slow-moving logistics signals (platform requests, storage thresholds). Noticeably sluggish if you're using these devices for fast belt logic.
+
+**Spoilage reader update interval** (default: 60 ticks, range: 30–600)
+Controls only the Spoilage Reader. Spoilage changes slowly by nature, so there's little reason to scan inventory every few ticks.
+
+- **60 ticks** (default) — once per second. More than adequate for any spoilage monitoring use case.
+- **300 ticks** — every 5 seconds. Recommended if you have several spoilage readers or large chests (inventory scans scale with chest size). You'll never notice the difference.
+- **600 ticks** — every 10 seconds. Perfectly reasonable if you're just triggering an alert or routing logic that doesn't need to react faster than that.
+
+**General advice:** most players will never need to touch these. If you're building a large platform logistics network with many PLH devices and start seeing UPS drops, raise the circuit interval to 15 or 30 first — that recovers the most headroom for the least perceived cost. Only touch the spoilage interval if you have many spoilage readers over large inventories.
+
 ---
 
 ### Known Issues

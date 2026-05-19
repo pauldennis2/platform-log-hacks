@@ -413,6 +413,9 @@ end
 local STORAGE_READER_NAME   = "plh-storage-reader"
 local STORAGE_READER_OUTPUT = "plh-storage-reader-output"
 
+local SPOILAGE_READER_NAME   = "plh-spoilage-reader"
+local SPOILAGE_READER_OUTPUT = "plh-spoilage-reader-output"
+
 local function get_fullness(entity)
     local inv = entity.get_inventory(defines.inventory.chest)
     if inv then
@@ -497,6 +500,77 @@ local function update_storage_reader(entity)
     end
 end
 
+local function update_spoilage_reader(entity)
+    local id     = entity.unit_number
+    local output = storage.spoilage_reader_outputs[id]
+    if not (output and output.valid) then return end
+
+    local seen      = {}
+    local connected = {}
+    for _, connector_id in ipairs({
+        defines.wire_connector_id.combinator_input_red,
+        defines.wire_connector_id.combinator_input_green,
+    }) do
+        local connector = entity.get_wire_connector(connector_id, false)
+        if connector then
+            for _, conn in pairs(connector.connections) do
+                local other = conn.target.owner
+                if other and other.valid and not seen[other.unit_number] then
+                    seen[other.unit_number] = true
+                    connected[#connected + 1] = other
+                end
+            end
+        end
+    end
+
+    -- Single pass: track minimum seconds remaining (signal-S) and maximum percent
+    -- spoiled (signal-P). These may be different items — e.g. eggs near expiry by
+    -- percent vs. fish with few absolute seconds left. LuaItemPrototype does not
+    -- expose spoil_ticks at runtime, so percent uses an observation-based lifetime
+    -- cache that converges once a fresh stack of each item type has been seen.
+    local min_secs = nil
+    local max_pct  = nil
+    for _, ent in ipairs(connected) do
+        local inv = ent.get_inventory(defines.inventory.chest)
+        if inv then
+            for i = 1, #inv do
+                local stack = inv[i]
+                if stack.valid_for_read then
+                    local spoil_tick = stack.spoil_tick
+                    if spoil_tick and spoil_tick > 0 then
+                        local remaining = math.max(0, spoil_tick - game.tick)
+                        local secs = math.floor(remaining / 60)
+                        if min_secs == nil or secs < min_secs then min_secs = secs end
+
+                        local cached_max = storage.spoilage_max_ticks[stack.name] or 0
+                        if remaining > cached_max then
+                            storage.spoilage_max_ticks[stack.name] = remaining
+                            cached_max = remaining
+                        end
+                        if cached_max > 0 then
+                            local pct = math.floor((1 - remaining / cached_max) * 100)
+                            if max_pct == nil or pct > max_pct then max_pct = pct end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local new_key = (min_secs or -1) .. "," .. (max_pct or -1)
+    if storage.entity_keys[id] == new_key then return end
+    storage.entity_keys[id] = new_key
+    local section = get_output_section(output)
+    if min_secs == nil then
+        section.filters = {}
+    else
+        section.filters = {
+            {value = {type = "virtual", name = "signal-S", quality = "normal"}, min = min_secs},
+            {value = {type = "virtual", name = "signal-P", quality = "normal"}, min = max_pct or 0},
+        }
+    end
+end
+
 local function on_storage_reader_built(event)
     local entity = event.entity or event.created_entity
     if not (entity and entity.valid and entity.name == STORAGE_READER_NAME) then return end
@@ -524,6 +598,34 @@ local function on_storage_reader_removed(event)
     storage.storage_readers[entity.unit_number]        = nil
     storage.storage_reader_outputs[entity.unit_number] = nil
     storage.entity_keys[entity.unit_number]            = nil
+end
+
+local function on_spoilage_reader_built(event)
+    local entity = event.entity or event.created_entity
+    if not (entity and entity.valid and entity.name == SPOILAGE_READER_NAME) then return end
+    local output = entity.surface.create_entity({
+        name     = SPOILAGE_READER_OUTPUT,
+        position = entity.position,
+        force    = entity.force,
+    })
+    if not output then return end
+    wire_companion(entity, output)
+    init_output(output)
+    storage.spoilage_readers[entity.unit_number]        = entity
+    storage.spoilage_reader_outputs[entity.unit_number] = output
+end
+
+local function on_spoilage_reader_removed(event)
+    local entity = event.entity
+    if not (entity and entity.name == SPOILAGE_READER_NAME) then return end
+    local output = storage.spoilage_reader_outputs[entity.unit_number]
+    if output and output.valid then output.destroy() end
+    storage.spoilage_readers[entity.unit_number]        = nil
+    storage.spoilage_reader_outputs[entity.unit_number] = nil
+    storage.entity_keys[entity.unit_number]             = nil
+    for _, player in pairs(game.players) do
+        Gui.close_spoilage_reader(player)
+    end
 end
 
 -- ── Recipe Reader (modes: producer / ingredients) ────────────────────────────
@@ -1415,8 +1517,9 @@ local function rescan_surfaces()
         {DETECTOR_NAME,       DETECTOR_OUTPUT,       storage.detectors,       storage.detector_outputs},
 
         {MODULATOR_NAME,      MODULATOR_OUTPUT,      storage.modulators,      storage.modulator_outputs},
-        {STORAGE_READER_NAME, STORAGE_READER_OUTPUT, storage.storage_readers, storage.storage_reader_outputs},
-        {READER_NAME,         READER_OUTPUT,         storage.readers,         storage.reader_outputs},
+        {STORAGE_READER_NAME,  STORAGE_READER_OUTPUT,  storage.storage_readers,  storage.storage_reader_outputs},
+        {SPOILAGE_READER_NAME, SPOILAGE_READER_OUTPUT, storage.spoilage_readers, storage.spoilage_reader_outputs},
+        {READER_NAME,          READER_OUTPUT,          storage.readers,          storage.reader_outputs},
         {TYPE_GATE_NAME,      TYPE_GATE_OUTPUT,      storage.type_gates,      storage.type_gate_outputs},
         {SUBTYPE_GATE_NAME,   SUBTYPE_GATE_OUTPUT,   storage.subtype_gates,   storage.subtype_gate_outputs},
     }
@@ -1474,6 +1577,9 @@ script.on_init(function()
     storage.modulator_player_entity = {}
     storage.storage_readers         = {}
     storage.storage_reader_outputs  = {}
+    storage.spoilage_readers              = {}
+    storage.spoilage_reader_outputs       = {}
+    storage.spoilage_max_ticks            = {}
     storage.readers                 = {}
     storage.reader_outputs          = {}
     storage.reader_mode             = {}
@@ -1516,6 +1622,9 @@ script.on_configuration_changed(function()
     storage.modulator_player_entity = storage.modulator_player_entity or {}
     storage.storage_readers         = storage.storage_readers         or {}
     storage.storage_reader_outputs  = storage.storage_reader_outputs  or {}
+    storage.spoilage_readers              = storage.spoilage_readers              or {}
+    storage.spoilage_reader_outputs       = storage.spoilage_reader_outputs       or {}
+    storage.spoilage_max_ticks            = {}  -- reset on update so stale lifetimes are re-observed
     storage.readers                 = storage.readers                 or {}
     storage.reader_outputs          = storage.reader_outputs          or {}
     storage.reader_mode             = storage.reader_mode             or {}
@@ -1633,7 +1742,7 @@ register_compaktcircuit = function()
     if not script.active_mods["compaktcircuit"] then return end
     for _, name in ipairs({
         PILOT_NAME, PRD_NAME, DETECTOR_NAME, MODULATOR_NAME,
-        STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
+        STORAGE_READER_NAME, SPOILAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME,
         SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
     }) do
         remote.call("compaktcircuit", "add_combinator", {
@@ -1650,6 +1759,7 @@ local function on_built(event)
 
     on_modulator_built(event)
     on_storage_reader_built(event)
+    on_spoilage_reader_built(event)
     on_reader_built(event)
     on_type_gate_built(event)
     on_subtype_gate_built(event)
@@ -1668,6 +1778,7 @@ local function on_removed(event)
 
     on_modulator_removed(event)
     on_storage_reader_removed(event)
+    on_spoilage_reader_removed(event)
     on_reader_removed(event)
     on_type_gate_removed(event)
     on_subtype_gate_removed(event)
@@ -1679,7 +1790,7 @@ end
 local PLH_ENTITY_FILTERS = {}
 for _, n in ipairs({
     PILOT_NAME, PRD_NAME, DETECTOR_NAME, MODULATOR_NAME,
-    STORAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME, SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
+    STORAGE_READER_NAME, SPOILAGE_READER_NAME, READER_NAME, TYPE_GATE_NAME, SUBTYPE_GATE_NAME, SUBTYPE_SPREADER_NAME,
 }) do
     PLH_ENTITY_FILTERS[#PLH_ENTITY_FILTERS + 1] = {filter = "name", name = n}
 end
@@ -1723,7 +1834,7 @@ script.on_event(defines.events.on_player_setup_blueprint, function(event)
     end
 end)
 
-script.on_nth_tick(60, function()
+local function run_platform_tick()
     for id, entity in pairs(storage.pilots) do
         if entity and entity.valid then
             update_pilot(entity)
@@ -1738,9 +1849,9 @@ script.on_nth_tick(60, function()
             storage.prd_entities[id] = nil
         end
     end
-end)
+end
 
-script.on_nth_tick(6, function()
+local function run_circuit_tick()
     -- Guard: tables may be absent in saves from before they were added.
     if not storage.entity_keys       then storage.entity_keys       = {} end
     if not storage.modulator_quality then storage.modulator_quality = {} end
@@ -1748,7 +1859,6 @@ script.on_nth_tick(6, function()
         if entity and entity.valid then update_detector(entity)
         else storage.detectors[id] = nil; storage.detector_outputs[id] = nil end
     end
-
     for id, entity in pairs(storage.modulators) do
         if entity and entity.valid then update_modulator(entity)
         else storage.modulators[id] = nil; storage.modulator_outputs[id] = nil end
@@ -1772,5 +1882,44 @@ script.on_nth_tick(6, function()
     for id, entity in pairs(storage.subtype_spreaders) do
         if entity and entity.valid then update_subtype_spreader(entity)
         else storage.subtype_spreaders[id] = nil end
+    end
+end
+
+local function run_spoilage_tick()
+    if not storage.spoilage_readers then storage.spoilage_readers = {}; storage.spoilage_reader_outputs = {} end
+    for id, entity in pairs(storage.spoilage_readers) do
+        if entity and entity.valid then update_spoilage_reader(entity)
+        else storage.spoilage_readers[id] = nil; storage.spoilage_reader_outputs[id] = nil end
+    end
+end
+
+local function register_tick_handlers()
+    script.on_nth_tick(nil)
+    local ci = settings.global["plh-circuit-interval"].value
+    local si = settings.global["plh-spoilage-interval"].value
+    -- Build tick→handlers map so multiple functions at the same interval merge cleanly
+    local tick_map = {}
+    local function add(tick, fn)
+        if not tick_map[tick] then tick_map[tick] = {} end
+        tick_map[tick][#tick_map[tick] + 1] = fn
+    end
+    add(ci, run_circuit_tick)
+    add(si, run_spoilage_tick)
+    add(60, run_platform_tick)
+    for tick, fns in pairs(tick_map) do
+        if #fns == 1 then
+            script.on_nth_tick(tick, fns[1])
+        else
+            local captured = fns
+            script.on_nth_tick(tick, function() for _, fn in ipairs(captured) do fn() end end)
+        end
+    end
+end
+
+register_tick_handlers()
+
+script.on_event(defines.events.on_runtime_mod_setting_changed, function(event)
+    if event.setting == "plh-circuit-interval" or event.setting == "plh-spoilage-interval" then
+        register_tick_handlers()
     end
 end)

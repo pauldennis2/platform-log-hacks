@@ -127,6 +127,25 @@ storage_reader_out.collision_mask = {layers = {}}
 storage_reader_out.selection_box = {{0, 0}, {0, 0}}
 hide_companion(storage_reader_out)
 
+-- Spoilage Reader: outputs signal-S = % spoiled of the most-spoiled item in directly-wired storage
+local PLH_TINT_SPOILAGE = {r = 0.30, g = 0.75, b = 0.35, a = 1.0}  -- organic green
+local spoilage_reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
+spoilage_reader.name = "plh-spoilage-reader"
+spoilage_reader.minable = {mining_time = 0.1, result = "plh-spoilage-reader"}
+spoilage_reader.icon = "__base__/graphics/icons/arithmetic-combinator.png"
+spoilage_reader.icon_size = 64
+spoilage_reader.icon_mipmaps = 4
+apply_tint(spoilage_reader, PLH_TINT_SPOILAGE)
+
+local spoilage_reader_out = util.table.deepcopy(data.raw["constant-combinator"]["constant-combinator"])
+spoilage_reader_out.name = "plh-spoilage-reader-output"
+spoilage_reader_out.minable = nil
+spoilage_reader_out.flags = {"not-blueprintable", "not-deconstructable", "not-selectable-in-game"}
+spoilage_reader_out.collision_box = {{-0.1, -0.1}, {0.1, 0.1}}
+spoilage_reader_out.collision_mask = {layers = {}}
+spoilage_reader_out.selection_box = {{0, 0}, {0, 0}}
+hide_companion(spoilage_reader_out)
+
 -- Recipe Reader: outputs the building that produces each input item signal
 -- (Future: option 1 = output ingredients, option 2 = output what can be made)
 local reader = util.table.deepcopy(data.raw["arithmetic-combinator"]["arithmetic-combinator"])
@@ -201,6 +220,8 @@ data:extend({
 
     storage_reader,
     storage_reader_out,
+    spoilage_reader,
+    spoilage_reader_out,
     reader,
     reader_out,
     type_gate,
@@ -306,6 +327,25 @@ data:extend({
         name = "plh-storage-reader",
         ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
         results = {{type = "item", name = "plh-storage-reader", amount = 1}},
+        enabled = false,
+        energy_required = 1,
+    },
+    {
+        type = "item",
+        name = "plh-spoilage-reader",
+        icon = "__base__/graphics/icons/arithmetic-combinator.png",
+        icon_size = 64,
+        icon_mipmaps = 4,
+        subgroup = "circuit-network",
+        order = "c[combinators]-z[plh-spoilage-reader]",
+        stack_size = 10,
+        place_result = "plh-spoilage-reader",
+    },
+    {
+        type = "recipe",
+        name = "plh-spoilage-reader",
+        ingredients = {{type = "item", name = "arithmetic-combinator", amount = 1}},
+        results = {{type = "item", name = "plh-spoilage-reader", amount = 1}},
         enabled = false,
         energy_required = 1,
     },
@@ -425,6 +465,7 @@ data:extend({{
         {type = "unlock-recipe", recipe = "plh-type-detector"},
         {type = "unlock-recipe", recipe = "plh-quality-modulator"},
         {type = "unlock-recipe", recipe = "plh-storage-reader"},
+        {type = "unlock-recipe", recipe = "plh-spoilage-reader"},
         {type = "unlock-recipe", recipe = "plh-recipe-reader"},
         {type = "unlock-recipe", recipe = "plh-type-gate"},
         {type = "unlock-recipe", recipe = "plh-subtype-gate"},

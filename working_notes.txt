@@ -6,3 +6,8 @@ edit readme
 
 icon todo:
 Better ordering - gates together, type stuff together
+
+spoilage reader - icon
+user config control of update rate
+
+spoilage reader - why not both?

@@ -40,6 +40,10 @@ local PRD_FRAME     = "plh-prd-frame"
 local PRD_CLOSE     = "plh-prd-close"
 local PRD_TOGGLE    = "plh-prd-toggle"
 
+local SPOILAGE_READER_NAME      = "plh-spoilage-reader"
+local SPOILAGE_READER_FRAME     = "plh-spoilage-reader-frame"
+local SPOILAGE_READER_CLOSE_BTN = "plh-spoilage-reader-close"
+
 local SUBTYPE_GATE_NAME           = "plh-subtype-gate"
 local SUBTYPE_GATE_FRAME          = "plh-subtype-gate-frame"
 local SUBTYPE_GATE_CLOSE_BTN      = "plh-subtype-gate-close"
@@ -437,6 +441,28 @@ function Gui.create_prd(player, entity)
     storage.prd_player_entity[player.index] = entity.unit_number
 end
 
+function Gui.close_spoilage_reader(player)
+    local frame = player.gui.screen[SPOILAGE_READER_FRAME]
+    if frame and frame.valid then frame.destroy() end
+    player.opened = nil
+end
+
+function Gui.create_spoilage_reader(player, entity)
+    local existing = player.gui.screen[SPOILAGE_READER_FRAME]
+    if existing then existing.destroy() end
+
+    local frame = player.gui.screen.add{type = "frame", name = SPOILAGE_READER_FRAME, direction = "vertical"}
+    frame.auto_center = true
+    make_titlebar(frame, {"entity-name.plh-spoilage-reader"}, SPOILAGE_READER_CLOSE_BTN)
+
+    local content = frame.add{type = "flow", direction = "vertical"}
+    content.style.padding = 8
+    content.add{type = "label", caption = {"plh-gui.spoilage-info-s"}}
+    content.add{type = "label", caption = {"plh-gui.spoilage-info-p"}}
+
+    player.opened = frame
+end
+
 script.on_event(defines.events.on_gui_opened, function(event)
     if not event.entity then return end
     local player = game.players[event.player_index]
@@ -458,6 +484,9 @@ script.on_event(defines.events.on_gui_opened, function(event)
     elseif event.entity.name == PRD_NAME then
         player.opened = nil
         Gui.create_prd(player, event.entity)
+    elseif event.entity.name == SPOILAGE_READER_NAME then
+        player.opened = nil
+        Gui.create_spoilage_reader(player, event.entity)
     end
 end)
 
@@ -470,6 +499,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
         if event.entity.name == SUBTYPE_GATE_NAME     then Gui.close_subtype_gate(player)     end
         if event.entity.name == SUBTYPE_SPREADER_NAME  then Gui.close_subtype_spreader(player)  end
         if event.entity.name == PRD_NAME               then Gui.close_prd(player)               end
+        if event.entity.name == SPOILAGE_READER_NAME   then Gui.close_spoilage_reader(player)   end
         return
     end
     if not event.element then return end
@@ -491,6 +521,8 @@ script.on_event(defines.events.on_gui_closed, function(event)
     elseif event.element.name == PRD_FRAME then
         if event.element.valid then event.element.destroy() end
         storage.prd_player_entity[player.index] = nil
+    elseif event.element.name == SPOILAGE_READER_FRAME then
+        if event.element.valid then event.element.destroy() end
     end
 end)
 
@@ -509,6 +541,8 @@ script.on_event(defines.events.on_gui_click, function(event)
         Gui.close_subtype_spreader(player)
     elseif event.element.name == PRD_CLOSE then
         Gui.close_prd(player)
+    elseif event.element.name == SPOILAGE_READER_CLOSE_BTN then
+        Gui.close_spoilage_reader(player)
     end
 end)
 
